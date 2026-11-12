@@ -52,12 +52,13 @@ graph TD
 ```
 
 ```
-Drawling/
+.
 ├── crates/
 │   ├── drawling-core/       # Core math, brush engine, tablet calibration, filters, tools & layer stack
 │   ├── drawling-storage/    # .drawling container (ZIP/JSON), SQLite project gallery, PNG/JPEG/SVG export
 │   ├── drawling-render/     # WGPU WGSL pipeline, canvas viewport, Rayon multi-threaded compositor
 │   └── drawling-app/        # Desktop application orchestration, state management, shortcuts & themes
+├── Cargo.lock
 ├── Cargo.toml
 └── README.md
 ```

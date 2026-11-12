@@ -128,3 +128,41 @@ fn test_end_to_end_drawing_and_export_workflow() {
     let _ = std::fs::remove_file(temp_archive);
     let _ = std::fs::remove_file(temp_png);
 }
+
+#[test]
+fn test_advanced_tools_and_artistic_filters_workflow() {
+    let width = 64;
+    let height = 64;
+    let mut stack = LayerStack::new(width, height);
+    let layer_idx = stack.add_layer("Artwork");
+    stack.active_index = layer_idx;
+    let layer = &mut stack.layers[layer_idx];
+
+    // 1. Draw shapes
+    ShapeDrawer::draw_rect(layer, 5, 5, 20, 20, Color::RED, None);
+    ShapeDrawer::draw_star(layer, 45.0, 45.0, 5, 6.0, 14.0, Color::YELLOW, 2.0);
+
+    // 2. Flood fill with expansion inside a region
+    FloodFill::fill(layer, 10, 10, Color::BLUE, 0.1, 1, true);
+    assert_eq!(layer.get_color(10, 10), Some(Color::BLUE));
+
+    // 3. Color Picker sampling
+    let sampled = ColorPicker::sample_layer(layer, 10, 10, 1);
+    assert!(sampled.b > 0.5);
+
+    // 4. Smudge tool stroke
+    let mut smudge = SmudgeEngine::new(6.0, 0.8, 0.5);
+    smudge.begin_stroke(layer, 10.0, 10.0);
+    smudge.smudge_to(layer, 10.0, 10.0, 25.0, 10.0);
+
+    // 5. Advanced artistic filters pipeline
+    ArtisticFilter::bloom(layer, 0.5, 2.0, 0.7);
+    ArtisticFilter::chromatic_aberration(layer, 2.0, 0.0);
+    ArtisticFilter::motion_blur(layer, 90.0, 3.0);
+    ArtisticFilter::levels(layer, 5, 250, 1.0, 0, 255);
+    ArtisticFilter::unsharp_mask(layer, 1.0, 1.5, 5);
+
+    // Verify non-empty pixels after filters
+    let active_count = layer.pixels.chunks_exact(4).filter(|px| px[3] > 0).count();
+    assert!(active_count > 50, "Layer should contain painted pixels after artistic pipeline");
+}

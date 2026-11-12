@@ -1,4 +1,5 @@
 use super::blend::BlendMode;
+use crate::color::Color;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -53,6 +54,10 @@ impl Layer {
         }
     }
 
+    pub fn fill_color(&mut self, color: Color) {
+        self.fill(color.to_rgba8());
+    }
+
     #[inline]
     pub fn get_pixel(&self, x: u32, y: u32) -> Option<[u8; 4]> {
         if x >= self.width || y >= self.height {
@@ -65,6 +70,11 @@ impl Layer {
             self.pixels[idx + 2],
             self.pixels[idx + 3],
         ])
+    }
+
+    #[inline]
+    pub fn get_color(&self, x: u32, y: u32) -> Option<Color> {
+        self.get_pixel(x, y).map(|p| Color::from_rgba8(p[0], p[1], p[2], p[3]))
     }
 
     #[inline]
@@ -84,6 +94,11 @@ impl Layer {
         } else {
             self.pixels[idx..idx + 4].copy_from_slice(&color);
         }
+    }
+
+    #[inline]
+    pub fn set_color(&mut self, x: u32, y: u32, color: Color) {
+        self.set_pixel(x, y, color.to_rgba8());
     }
 
     /// Blend a single pixel onto this layer directly

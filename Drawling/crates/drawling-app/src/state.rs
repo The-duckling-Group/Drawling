@@ -10,8 +10,13 @@ use uuid::Uuid;
 pub enum ActiveTool {
     Brush,
     Eraser,
+    Smudge,
     Eyedropper,
     Bucket,
+    Line,
+    Rectangle,
+    Ellipse,
+    Star,
     Lasso,
     MagicWand,
     RectSelect,
@@ -20,10 +25,29 @@ pub enum ActiveTool {
     Pan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GalleryViewMode {
-    Grid,
-    List,
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolOptions {
+    pub fill_tolerance: f32,
+    pub fill_expand: i32,
+    pub fill_contiguous: bool,
+    pub shape_stroke_width: Option<f32>,
+    pub eyedropper_radius: u32,
+    pub star_points: usize,
+    pub star_inner_ratio: f32,
+}
+
+impl Default for ToolOptions {
+    fn default() -> Self {
+        Self {
+            fill_tolerance: 0.12,
+            fill_expand: 1,
+            fill_contiguous: true,
+            shape_stroke_width: None,
+            eyedropper_radius: 1,
+            star_points: 5,
+            star_inner_ratio: 0.5,
+        }
+    }
 }
 
 pub struct EditorState {
@@ -35,14 +59,21 @@ pub struct EditorState {
     pub brush_presets: Vec<BrushPreset>,
     pub active_preset_index: usize,
     pub stabilizer: StrokeStabilizer,
+    pub smudge_engine: SmudgeEngine,
     pub selection_mask: SelectionMask,
     pub symmetry_mode: SymmetryMode,
     pub history: HistoryStack,
     pub primary_color: Color,
     pub secondary_color: Color,
     pub active_tool: ActiveTool,
+    pub tool_options: ToolOptions,
+    pub active_palette: ColorPalette,
+    pub available_palettes: Vec<ColorPalette>,
+    pub recent_colors: RecentColors,
     pub zen_mode: bool,
     pub is_drawing: bool,
+    pub stroke_start_canvas: Option<(f32, f32)>,
+    pub last_canvas_pos: Option<(f32, f32)>,
     pub current_stroke_before_pixels: Option<Vec<u8>>,
     pub lasso_points: Vec<(f32, f32)>,
     pub file_path: Option<PathBuf>,
@@ -81,6 +112,19 @@ impl EditorState {
         let presets = BrushPreset::default_library();
         let default_params = presets[0].parameters.clone();
 
+        let default_palette = ColorPalette::neon_cyberpunk();
+        let available_palettes = vec![
+            ColorPalette::neon_cyberpunk(),
+            ColorPalette::skin_tones(),
+            ColorPalette::manga_screentone(),
+            ColorPalette::pastel_anime(),
+            ColorPalette::classic_oil(),
+        ];
+
+        let mut recent_colors = RecentColors::new(12);
+        recent_colors.push(Color::BLACK);
+        recent_colors.push(Color::WHITE);
+
         Self {
             manifest,
             stack,
@@ -93,14 +137,21 @@ impl EditorState {
                 rope_length: 15.0,
                 tension: 0.6,
             }),
+            smudge_engine: SmudgeEngine::new(20.0, 0.7, 0.4),
             selection_mask: SelectionMask::new(width, height),
             symmetry_mode: SymmetryMode::None,
             history: HistoryStack::new(50),
             primary_color: Color::BLACK,
             secondary_color: Color::WHITE,
             active_tool: ActiveTool::Brush,
+            tool_options: ToolOptions::default(),
+            active_palette: default_palette,
+            available_palettes,
+            recent_colors,
             zen_mode: false,
             is_drawing: false,
+            stroke_start_canvas: None,
+            last_canvas_pos: None,
             current_stroke_before_pixels: None,
             lasso_points: Vec::new(),
             file_path: None,
@@ -121,11 +172,14 @@ impl EditorState {
     pub fn set_primary_color(&mut self, color: Color) {
         self.primary_color = color;
         self.brush_engine.params_mut().color = color;
+        self.recent_colors.push(color);
     }
 
-    /// Pen down: begins drawing stroke or selection
+    /// Pen down: begins drawing stroke, shape, fill or selection
     pub fn pointer_down(&mut self, screen_x: f32, screen_y: f32, pressure: f32) {
         let (cx, cy) = self.viewport.screen_to_canvas(screen_x, screen_y);
+        self.stroke_start_canvas = Some((cx, cy));
+        self.last_canvas_pos = Some((cx, cy));
 
         match self.active_tool {
             ActiveTool::Brush | ActiveTool::Eraser => {
@@ -138,7 +192,6 @@ impl EditorState {
                 self.stabilizer.reset();
                 self.brush_engine.reset_stroke();
 
-                // Save snapshot for Undo
                 if let Some(layer) = self.stack.active_layer() {
                     self.current_stroke_before_pixels = Some(layer.pixels.clone());
                 }
@@ -149,16 +202,21 @@ impl EditorState {
                 }
             }
 
-            ActiveTool::Eyedropper => {
-                if cx >= 0.0 && cx < self.manifest.canvas_width as f32
-                    && cy >= 0.0 && cy < self.manifest.canvas_height as f32
-                {
-                    let px_idx = ((cy.floor() as u32 * self.manifest.canvas_width + cx.floor() as u32) * 4) as usize;
-                    let comp = self.compositor.composite_buffer();
-                    if px_idx + 4 <= comp.len() {
-                        let c = Color::from_rgba8(comp[px_idx], comp[px_idx + 1], comp[px_idx + 2], comp[px_idx + 3]);
-                        self.set_primary_color(c);
+            ActiveTool::Smudge => {
+                if let Some(layer) = self.stack.active_layer() {
+                    if layer.locked {
+                        return;
                     }
+                    self.current_stroke_before_pixels = Some(layer.pixels.clone());
+                    self.smudge_engine.begin_stroke(layer, cx, cy);
+                    self.is_drawing = true;
+                }
+            }
+
+            ActiveTool::Eyedropper => {
+                let picked = ColorPicker::sample_stack(&self.stack, cx.round() as i32, cy.round() as i32, self.tool_options.eyedropper_radius);
+                if picked.a > 0.0 {
+                    self.set_primary_color(picked);
                 }
             }
 
@@ -170,17 +228,15 @@ impl EditorState {
                     let y = cy.floor() as u32;
                     if let Some(layer) = self.stack.active_layer_mut() {
                         let before = layer.pixels.clone();
-                        let mut mask = SelectionMask::new(layer.width, layer.height);
-                        mask.select_magic_wand(layer, x, y, 32.0, true);
-
-                        let fill_rgba = self.primary_color.to_rgba8();
-                        for my in 0..mask.height {
-                            for mx in 0..mask.width {
-                                if mask.get(mx, my) > 0 {
-                                    layer.blend_pixel_onto(mx, my, fill_rgba, layer.blend_mode, 1.0);
-                                }
-                            }
-                        }
+                        FloodFill::fill(
+                            layer,
+                            x,
+                            y,
+                            self.primary_color,
+                            self.tool_options.fill_tolerance,
+                            self.tool_options.fill_expand,
+                            self.tool_options.fill_contiguous,
+                        );
 
                         let after = layer.pixels.clone();
                         self.history.push(HistoryAction::LayerPixelsChanged {
@@ -189,6 +245,15 @@ impl EditorState {
                             after_pixels: after,
                         });
                         self.compositor.update_composite(&self.stack);
+                    }
+                }
+            }
+
+            ActiveTool::Line | ActiveTool::Rectangle | ActiveTool::Ellipse | ActiveTool::Star => {
+                if let Some(layer) = self.stack.active_layer() {
+                    if !layer.locked {
+                        self.is_drawing = true;
+                        self.current_stroke_before_pixels = Some(layer.pixels.clone());
                     }
                 }
             }
@@ -231,11 +296,21 @@ impl EditorState {
                     self.render_stroke_point(stab_pt);
                 }
             }
+            ActiveTool::Smudge => {
+                if let Some((px, py)) = self.last_canvas_pos {
+                    if let Some(layer) = self.stack.active_layer_mut() {
+                        self.smudge_engine.smudge_to(layer, px, py, cx, cy);
+                        self.compositor.update_composite(&self.stack);
+                    }
+                }
+            }
             ActiveTool::Lasso => {
                 self.lasso_points.push((cx, cy));
             }
             _ => {}
         }
+
+        self.last_canvas_pos = Some((cx, cy));
     }
 
     /// Pen lift
@@ -252,19 +327,70 @@ impl EditorState {
                     self.render_stroke_point(last_pt);
                 }
 
-                // Commit action to HistoryStack
-                if let (Some(layer), Some(before)) = (
-                    self.stack.active_layer(),
-                    self.current_stroke_before_pixels.take(),
-                ) {
-                    self.history.push(HistoryAction::LayerPixelsChanged {
-                        layer_id: layer.id,
-                        before_pixels: before,
-                        after_pixels: layer.pixels.clone(),
-                    });
-                }
+                self.commit_layer_undo();
+            }
 
-                self.compositor.update_composite(&self.stack);
+            ActiveTool::Smudge => {
+                self.commit_layer_undo();
+            }
+
+            ActiveTool::Line => {
+                if let (Some((x0, y0)), Some((x1, y1))) = (self.stroke_start_canvas, self.last_canvas_pos) {
+                    let w = self.tool_options.shape_stroke_width.unwrap_or(3.0);
+                    if let Some(layer) = self.stack.active_layer_mut() {
+                        ShapeDrawer::draw_line(layer, x0, y0, x1, y1, self.primary_color, w);
+                    }
+                    self.commit_layer_undo();
+                }
+            }
+
+            ActiveTool::Rectangle => {
+                if let (Some((x0, y0)), Some((x1, y1))) = (self.stroke_start_canvas, self.last_canvas_pos) {
+                    let rx = x0.min(x1).round() as i32;
+                    let ry = y0.min(y1).round() as i32;
+                    let rw = (x1 - x0).abs().round() as u32;
+                    let rh = (y1 - y0).abs().round() as u32;
+
+                    if rw > 0 && rh > 0 {
+                        if let Some(layer) = self.stack.active_layer_mut() {
+                            ShapeDrawer::draw_rect(layer, rx, ry, rw, rh, self.primary_color, self.tool_options.shape_stroke_width);
+                        }
+                    }
+                    self.commit_layer_undo();
+                }
+            }
+
+            ActiveTool::Ellipse => {
+                if let (Some((x0, y0)), Some((x1, y1))) = (self.stroke_start_canvas, self.last_canvas_pos) {
+                    let cx = (x0 + x1) * 0.5;
+                    let cy = (y0 + y1) * 0.5;
+                    let rx = (x1 - x0).abs() * 0.5;
+                    let ry = (y1 - y0).abs() * 0.5;
+
+                    if rx > 0.0 && ry > 0.0 {
+                        if let Some(layer) = self.stack.active_layer_mut() {
+                            ShapeDrawer::draw_ellipse(layer, cx, cy, rx, ry, self.primary_color, self.tool_options.shape_stroke_width);
+                        }
+                    }
+                    self.commit_layer_undo();
+                }
+            }
+
+            ActiveTool::Star => {
+                if let (Some((x0, y0)), Some((x1, y1))) = (self.stroke_start_canvas, self.last_canvas_pos) {
+                    let cx = (x0 + x1) * 0.5;
+                    let cy = (y0 + y1) * 0.5;
+                    let outer_r = ((x1 - x0).hypot(y1 - y0)) * 0.5;
+                    let inner_r = outer_r * self.tool_options.star_inner_ratio;
+
+                    if outer_r > 2.0 {
+                        let sw = self.tool_options.shape_stroke_width.unwrap_or(2.0);
+                        if let Some(layer) = self.stack.active_layer_mut() {
+                            ShapeDrawer::draw_star(layer, cx, cy, self.tool_options.star_points, inner_r, outer_r, self.primary_color, sw);
+                        }
+                    }
+                    self.commit_layer_undo();
+                }
             }
 
             ActiveTool::Lasso => {
@@ -277,10 +403,26 @@ impl EditorState {
 
             _ => {}
         }
+
+        self.stroke_start_canvas = None;
+        self.last_canvas_pos = None;
+    }
+
+    fn commit_layer_undo(&mut self) {
+        if let (Some(layer), Some(before)) = (
+            self.stack.active_layer(),
+            self.current_stroke_before_pixels.take(),
+        ) {
+            self.history.push(HistoryAction::LayerPixelsChanged {
+                layer_id: layer.id,
+                before_pixels: before,
+                after_pixels: layer.pixels.clone(),
+            });
+        }
+        self.compositor.update_composite(&self.stack);
     }
 
     fn render_stroke_point(&mut self, pt: StrokePoint) {
-        // Symmetry propagation
         let sym_points = SymmetryGuide::generate_points(&self.symmetry_mode, pt);
 
         for sym_pt in sym_points {
@@ -298,6 +440,99 @@ impl EditorState {
         }
 
         self.compositor.update_composite(&self.stack);
+    }
+
+    // --- High-Performance Multithreaded Filters & Tone Adjustments ---
+
+    fn run_filter_on_active_layer<F>(&mut self, apply: F)
+    where
+        F: FnOnce(&mut Layer),
+    {
+        if let Some(layer) = self.stack.active_layer_mut() {
+            if layer.locked {
+                return;
+            }
+            let before = layer.pixels.clone();
+            let layer_id = layer.id;
+
+            apply(layer);
+
+            let after = layer.pixels.clone();
+            self.history.push(HistoryAction::LayerPixelsChanged {
+                layer_id,
+                before_pixels: before,
+                after_pixels: after,
+            });
+            self.compositor.update_composite(&self.stack);
+        }
+    }
+
+    pub fn apply_filter_gaussian_blur(&mut self, radius: f32) {
+        self.run_filter_on_active_layer(|l| GaussianBlur::apply(l, radius));
+    }
+
+    pub fn apply_filter_motion_blur(&mut self, angle_deg: f32, distance: f32) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::motion_blur(l, angle_deg, distance));
+    }
+
+    pub fn apply_filter_radial_blur(&mut self, cx: f32, cy: f32, amount: f32, samples: usize) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::radial_blur(l, cx, cy, amount, samples));
+    }
+
+    pub fn apply_filter_unsharp_mask(&mut self, radius: f32, amount: f32, threshold: u8) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::unsharp_mask(l, radius, amount, threshold));
+    }
+
+    pub fn apply_filter_halftone(&mut self, dot_size: f32, angle_deg: f32, invert: bool) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::halftone(l, dot_size, angle_deg, invert));
+    }
+
+    pub fn apply_filter_chromatic_aberration(&mut self, offset_x: f32, offset_y: f32) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::chromatic_aberration(l, offset_x, offset_y));
+    }
+
+    pub fn apply_filter_bloom(&mut self, threshold: f32, blur_radius: f32, intensity: f32) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::bloom(l, threshold, blur_radius, intensity));
+    }
+
+    pub fn apply_filter_mosaic(&mut self, block_size: u32) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::mosaic(l, block_size));
+    }
+
+    pub fn apply_filter_film_grain(&mut self, intensity: f32, monochrome: bool) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::film_grain(l, intensity, monochrome));
+    }
+
+    pub fn apply_filter_posterize(&mut self, levels: u8) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::posterize(l, levels));
+    }
+
+    pub fn apply_filter_threshold(&mut self, cutoff: u8) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::threshold(l, cutoff));
+    }
+
+    pub fn apply_filter_levels(&mut self, in_black: u8, in_white: u8, gamma: f32, out_black: u8, out_white: u8) {
+        self.run_filter_on_active_layer(|l| ArtisticFilter::levels(l, in_black, in_white, gamma, out_black, out_white));
+    }
+
+    pub fn apply_filter_brightness_contrast(&mut self, brightness: f32, contrast: f32) {
+        self.run_filter_on_active_layer(|l| ColorAdjust::brightness_contrast(l, brightness, contrast));
+    }
+
+    pub fn apply_filter_hue_saturation(&mut self, hue_deg: f32, sat_scale: f32) {
+        self.run_filter_on_active_layer(|l| ColorAdjust::hue_saturation(l, hue_deg, sat_scale));
+    }
+
+    pub fn apply_filter_sepia(&mut self, intensity: f32) {
+        self.run_filter_on_active_layer(|l| ColorAdjust::sepia(l, intensity));
+    }
+
+    pub fn apply_filter_vignette(&mut self, radius: f32, softness: f32) {
+        self.run_filter_on_active_layer(|l| ColorAdjust::vignette(l, radius, softness));
+    }
+
+    pub fn apply_filter_invert(&mut self) {
+        self.run_filter_on_active_layer(ColorAdjust::invert);
     }
 
     /// Save current project to .drawling file

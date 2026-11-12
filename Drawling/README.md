@@ -12,7 +12,7 @@
 ```
 drawling/
 ├── crates/
-│   ├── drawling-core/       # Pure high-performance math, stroke stabilization, brush engine, layers, filters
+│   ├── drawling-core/       # Pure high-performance math, stroke stabilization, brush engine, tools, layers, filters
 │   ├── drawling-storage/    # .drawling container format, SQLite gallery database, PNG/JPEG/SVG exporters
 │   ├── drawling-render/     # WGPU shader pipeline (WGSL) & Rayon-accelerated canvas compositor
 │   └── drawling-app/        # Desktop application orchestration, state machine, theme & shortcut manager
@@ -36,32 +36,64 @@ drawling/
   - Built-in library: Inking G-Pen, Soft Airbrush, Hard Round, Textured HB Pencil, Acrylic Flat.
   - Full JSON preset serialization and Adobe Photoshop (`.abr`) brush resource parsing.
 
-### 2. Advanced Layer Management
+### 2. Illustration Tools & Vector Shapes
+- **Smudge & Color Blending Engine**:
+  - Natural paint pickup, blending, and color dragging across canvas strokes with adjustable bleed and strength.
+- **Flood Fill (Bucket Tool)**:
+  - 4-way BFS flood fill with Euclidean color distance tolerance and contiguous/global modes.
+  - **Lineart Halo Expansion (Dilation)**: Expands fill $N$ pixels underneath lineart borders to eliminate white halos.
+- **Geometric Vector Shapes**:
+  - Anti-aliased straight lines with stroke width.
+  - Outlined and filled Rectangles and Ellipses.
+  - Regular Stars with customizable ray counts and inner/outer radius ratios.
+- **Eyedropper / Color Picker**:
+  - Point ($1\times1$) and area ($3\times3$, $5\times5$) alpha-weighted sampling from active layer or composited canvas stack.
+
+### 3. Artist Palettes & Color Management
+- **Built-in Illustration Palettes**:
+  - **Neon Cyberpunk**: Electric cyan, neon crimson, acid yellow, cyber violet, matrix green.
+  - **Anime & Portrait Skin Tones**: Light highlights, midtones, and deep shadow skin shades.
+  - **Manga Inking & Screentone**: Pure black, 10%, 20%, 30%, 50%, 70% dot tones, pure white.
+  - **Pastel Anime**: Soft sakura pink, peach, mint cream, aqua, periwinkle, lavender.
+  - **Classic Oil & Gouache**: Burnt sienna, ochre, ultramarine, British racing green, cadmium red.
+- **Recent Colors Buffer**: Automatic FIFO ring-buffer tracking recently used swatches.
+- **Hex Import/Export**: Quick import/export of color palettes from hex lists.
+
+### 4. Advanced Layer Management
 - **13 Blend Modes** implemented with mathematical precision:
   `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`, `Color Dodge`, `Color Burn`, `Add (Linear Dodge)`, `Subtract`, `Difference`, `Soft Light`, `Hard Light`.
 - **Clipping Masks**: Clip any layer against the alpha channel of base layers below.
 - **Alpha Lock**: Paint exclusively within existing pixel boundaries without expanding transparency.
-- **Hierarchical Layer Stack**: Add, duplicate, reorder, merge, and adjust opacity.
+- **Hierarchical Layer Stack**: Add, duplicate, reorder, merge down, flatten, and adjust opacity.
 
-### 3. Selection & Transformation Tools
+### 5. Selection & Transformation Tools
 - **Selection Tools**:
   - Rectangle and Ellipse selections.
   - **Freehand Lasso**: Polygon scanline rasterization with even-odd fill rules.
   - **Magic Wand**: Flood fill with Euclidean color-distance tolerance and edge feathering.
+  - **Boolean Mask Operations**: Union, Subtract, Intersect, Expand, and Shrink.
 - **Transformations**:
   - 2D Affine Transformation matrix (Translation, Rotation, Scaling, Skew) with high-quality Bilinear Resampling.
-  - Mesh-Warp grid and Perspective vanishing-point guides.
+  - Mesh-Warp grid and Perspective vanishing-point guides with angular snapping.
 - **Symmetry Guides**:
-  - Horizontal & Vertical mirror axes.
-  - Dual-Axis cross reflection.
+  - Horizontal & Vertical mirror axes, dual-axis cross reflection.
   - **N-Fold Radial Symmetry** (Kaleidoscope / Mandala drawing with optional mirror flipping).
 
-### 4. Multi-Threaded Image Processing Filters (Rayon)
+### 6. Multi-Threaded Image Processing & Artistic Filters (Rayon)
 - **Gaussian Blur**: Multi-threaded separable 1D convolution with arbitrary radius ($\sigma$).
-- **Color Adjustments**: Real-time Brightness/Contrast and Hue/Saturation shift in HSV space.
-- **Gradient Map**: Re-maps grayscale intensity onto multi-stop color ramps using 256-level precomputed LUTs.
+- **Motion Blur**: Directional linear blur with configurable angle and distance.
+- **Radial / Zoom Blur**: Blur radiating outward from a focus point for dynamic action effects.
+- **Unsharp Mask**: Edge-enhancing high-pass filter with radius, amount, and threshold.
+- **Manga Halftone (Screentone)**: Rotated dot grid pattern generator for authentic comic shading.
+- **Chromatic Aberration**: Optical color fringing displacement for retro lens styling.
+- **Bloom / Glow**: Luminance thresholding, Gaussian blur, and additive screen blend.
+- **Mosaic / Pixelate**: Block-based color averaging for retro or stylized effects.
+- **Film Grain / Noise**: Monochromatic or RGB pseudo-random photographic texture.
+- **Posterize & Threshold**: Color quantization and strict binary black/white conversion.
+- **Levels & Curves**: Comprehensive tone curve adjustment with black point, white point, and midtone gamma.
+- **Color Adjustments**: Real-time Brightness/Contrast, Hue/Saturation, Invert, Sepia, Vignette, and Gradient Map.
 
-### 5. File Formats & Local Gallery
+### 7. File Formats & Local Gallery
 - **`.drawling` Container Format**:
   - Compressed zip archive holding `project.json` (metadata, canvas dimensions, layer stack), `thumbnail.png`, and lossless PNG buffers for each layer (`layers/{layer_id}.png`).
 - **Export Pipelines**: Lossless PNG, JPEG (with quality control & white-matte alpha composition), scalable SVG with embedded high-res assets.
@@ -69,12 +101,15 @@ drawling/
   - Local SQLite database (`projects.db`) storing artwork records, thumbnails, creation/modification timestamps, tags, and editing duration.
   - Auto-save journal for crash-recovery and undo history.
 
-### 6. UI / UX Design ("Smooth & Clean")
+### 8. UI / UX Design ("Smooth & Clean")
 - **Themes**:
   - **KDE Plasma Breeze Dark** (`#232629` surface, `#3daee9` Plasma blue accent).
   - **Modern Windows 11 Dark** (Mica dark slate, `#60cdff` accent).
 - **Zen-Mode**: Toggle with `Tab` or `F11` to hide all UI chrome for distraction-free illustration.
-- **Keyboard Shortcut Manager**: Clip Studio / Photoshop-aligned shortcuts (Ctrl+Z, Ctrl+Y, B, E, I, G, L, W, Ctrl+T, Ctrl+S).
+- **Keyboard Shortcut Manager**:
+  - Tools: Brush (`B`), Eraser (`E`), Smudge (`J`), Bucket (`G`), Eyedropper (`I`), Shape (`U`), Lasso (`L`), Magic Wand (`W`), Transform (`Ctrl+T`).
+  - Filters: Invert (`Ctrl+I`), Levels (`Ctrl+L`), Hue/Sat (`Ctrl+U`), Blur (`Ctrl+Alt+B`), Motion Blur (`Ctrl+Alt+M`).
+  - Standard: Undo (`Ctrl+Z`), Redo (`Ctrl+Y`), Save (`Ctrl+S`), Export (`Ctrl+E`), Zen-mode (`Tab`/`F11`).
 
 ---
 

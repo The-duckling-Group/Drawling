@@ -9,11 +9,18 @@ pub enum Action {
     Redo,
     ToolBrush,
     ToolEraser,
+    ToolSmudge,
     ToolEyedropper,
     ToolBucket,
+    ToolShape,
     ToolLasso,
     ToolMagicWand,
     ToolTransform,
+    FilterGaussianBlur,
+    FilterMotionBlur,
+    FilterInvert,
+    FilterLevels,
+    FilterHueSaturation,
     SaveProject,
     ExportImage,
     ZoomIn,
@@ -38,11 +45,18 @@ impl Default for ShortcutManager {
         bindings.insert("Ctrl+Shift+Z".into(), Action::Redo);
         bindings.insert("KeyB".into(), Action::ToolBrush);
         bindings.insert("KeyE".into(), Action::ToolEraser);
+        bindings.insert("KeyJ".into(), Action::ToolSmudge);
         bindings.insert("KeyI".into(), Action::ToolEyedropper);
         bindings.insert("KeyG".into(), Action::ToolBucket);
+        bindings.insert("KeyU".into(), Action::ToolShape);
         bindings.insert("KeyL".into(), Action::ToolLasso);
         bindings.insert("KeyW".into(), Action::ToolMagicWand);
         bindings.insert("Ctrl+T".into(), Action::ToolTransform);
+        bindings.insert("Ctrl+I".into(), Action::FilterInvert);
+        bindings.insert("Ctrl+L".into(), Action::FilterLevels);
+        bindings.insert("Ctrl+U".into(), Action::FilterHueSaturation);
+        bindings.insert("Ctrl+Alt+B".into(), Action::FilterGaussianBlur);
+        bindings.insert("Ctrl+Alt+M".into(), Action::FilterMotionBlur);
         bindings.insert("Ctrl+S".into(), Action::SaveProject);
         bindings.insert("Ctrl+E".into(), Action::ExportImage);
         bindings.insert("Ctrl+Plus".into(), Action::ZoomIn);

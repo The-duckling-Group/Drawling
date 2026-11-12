@@ -6,8 +6,11 @@
 ![wgpu](https://img.shields.io/badge/wgpu-0.20-blue?logo=webgpu)
 ![Platform](https://img.shields.io/badge/platform-Linux%20(KDE%20Plasma)%20%7C%20Windows-brightgreen)
 ![Stylus](https://img.shields.io/badge/stylus-XP--Pen%20%7C%20Wacom%20%7C%20Huion-purple)
+![Release](https://img.shields.io/github/v/release/The-duckling-Group/Drawling?label=latest%20release&color=success)
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue)
 ![Tests](https://img.shields.io/badge/tests-47%20passed-success)
+
+### [⬇️ Download Windows Executable (.exe)](https://github.com/The-duckling-Group/Drawling/releases/latest)
 
 **A Next-Generation, GPU-Accelerated Digital Drawing & Illustration Studio Built in Rust.**  
 *Inspired by professional illustration powerhouses like IbisPaint and Clip Studio Paint, engineered with ultra-low latency, multi-threaded Rayon image filters, WGPU hardware acceleration, and full stylus hardware dynamics.*
@@ -16,8 +19,20 @@
 
 ---
 
+## 📥 Download & Quickstart
+
+| Platform | Download | Format | Description |
+|:---|:---|:---|:---|
+| **Windows 10 / 11 (64-bit)** | [**`drawling-windows-x86_64.zip`**](https://github.com/The-duckling-Group/Drawling/releases/latest) | Standalone `.exe` | Portable, zero installation required. Unzip and launch `drawling.exe`. |
+| **Linux (x86_64)** | [**`drawling-linux-x86_64.tar.gz`**](https://github.com/The-duckling-Group/Drawling/releases/latest) | Binary | Native binary optimized for modern Linux & KDE Plasma. |
+
+All releases, source archives, and checksums are available on the [**GitHub Releases Page**](https://github.com/The-duckling-Group/Drawling/releases).
+
+---
+
 ## 📑 Table of Contents
-1. [Architecture & Workspace](#-architecture--workspace)
+1. [Download & Quickstart](#-download--quickstart)
+2. [Architecture & Workspace](#-architecture--workspace)
 2. [Key Features](#-key-features)
    - [High-Performance Brush Engine & Stabilization](#1-high-performance-brush-engine--stabilization)
    - [Graphics Tablet & Stylus Support (XP-Pen, Wacom, Huion)](#2-graphics-tablet--stylus-support-xp-pen-wacom-huion)

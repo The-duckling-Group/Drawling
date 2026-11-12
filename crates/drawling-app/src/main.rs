@@ -8,7 +8,7 @@ fn main() {
     log::info!("Starting Drawling for Duckling (Professional Rust Drawing Studio)");
 
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 && args[1] == "--demo" {
+    if args.len() > 1 && (args[1] == "--demo" || args[1] == "--benchmark" || args[1] == "--cli") {
         run_full_system_demo();
         return;
     }
@@ -20,11 +20,14 @@ fn main() {
     println!("Theme: KDE Breeze Dark / Modern Windows 11 Dark");
     println!("Rendering: wgpu GPU pipeline + Rayon Multi-threaded compositor");
     println!("Storage: .drawling container + SQLite Gallery");
-    println!("Run with `--demo` to execute the full system verification & benchmark.");
+    println!("Launching Desktop Studio GUI window...");
     println!("============================================================");
 
-    // Run demo by default if executed without args to show capabilities
-    run_full_system_demo();
+    // Launch the interactive desktop window
+    if let Err(e) = drawling_app::run_desktop_app() {
+        eprintln!("Could not initialize display window: {}. Falling back to demo mode.", e);
+        run_full_system_demo();
+    }
 }
 
 fn run_full_system_demo() {

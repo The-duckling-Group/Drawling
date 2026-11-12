@@ -551,6 +551,31 @@ impl EditorState {
         self.compositor.update_composite(&self.stack);
     }
 
+    /// Undo last action
+    pub fn undo(&mut self) -> bool {
+        let changed = self.history.undo(&mut self.stack);
+        if changed {
+            self.compositor.update_composite(&self.stack);
+        }
+        changed
+    }
+
+    /// Redo last undone action
+    pub fn redo(&mut self) -> bool {
+        let changed = self.history.redo(&mut self.stack);
+        if changed {
+            self.compositor.update_composite(&self.stack);
+        }
+        changed
+    }
+
+    /// Merge active layer down onto the layer beneath it
+    pub fn merge_down(&mut self) {
+        let active = self.stack.active_index;
+        self.stack.merge_down(active);
+        self.compositor.update_composite(&self.stack);
+    }
+
     // --- High-Performance Multithreaded Filters & Tone Adjustments ---
 
     fn run_filter_on_active_layer<F>(&mut self, apply: F)

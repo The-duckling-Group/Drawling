@@ -1,0 +1,22 @@
+[package]
+name = "drawling-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "drawling"
+path = "src/main.rs"
+
+[dependencies]
+drawling-core = { path = "../drawling-core" }
+drawling-storage = { path = "../drawling-storage" }
+drawling-render = { path = "../drawling-render" }
+serde.workspace = true
+serde_json.workspace = true
+image.workspace = true
+env_logger.workspace = true
+log.workspace = true
+chrono.workspace = true
+uuid.workspace = true

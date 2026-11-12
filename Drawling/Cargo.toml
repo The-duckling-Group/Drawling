@@ -1,0 +1,29 @@
+[workspace]
+members = [
+    "crates/drawling-core",
+    "crates/drawling-storage",
+    "crates/drawling-render",
+    "crates/drawling-app",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["The Duckling Group"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/The-duckling-Group/drawling"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+rayon = "1.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+bytemuck = { version = "1.18", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+thiserror = "1.0"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }

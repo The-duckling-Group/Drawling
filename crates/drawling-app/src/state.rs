@@ -192,7 +192,7 @@ impl EditorState {
         self.pointer_down_with_details(screen_x, screen_y, pressure, 0.0, 0.0);
     }
 
-    /// Stylus pointer down with pressure and tilt (XP-Pen, Wacom, Huion)
+    /// Stylus pointer down with screen coordinates (delegates to canvas after transform)
     pub fn pointer_down_with_details(
         &mut self,
         screen_x: f32,
@@ -202,6 +202,18 @@ impl EditorState {
         tilt_y: f32,
     ) {
         let (cx, cy) = self.viewport.screen_to_canvas(screen_x, screen_y);
+        self.pointer_down_canvas(cx, cy, raw_pressure, tilt_x, tilt_y);
+    }
+
+    /// Direct canvas-space pointer down (guarantees pixel-perfect alignment directly under cursor)
+    pub fn pointer_down_canvas(
+        &mut self,
+        cx: f32,
+        cy: f32,
+        raw_pressure: f32,
+        tilt_x: f32,
+        tilt_y: f32,
+    ) {
         self.stroke_start_canvas = Some((cx, cy));
         self.last_canvas_pos = Some((cx, cy));
         self.stylus_tilt = (tilt_x, tilt_y);
@@ -320,7 +332,7 @@ impl EditorState {
         self.pointer_move_with_details(screen_x, screen_y, pressure, 0.0, 0.0, 0);
     }
 
-    /// Stylus pointer move with dynamic pressure, tilt, and high-res timestamp
+    /// Stylus pointer move with screen coordinates (delegates to canvas after transform)
     pub fn pointer_move_with_details(
         &mut self,
         screen_x: f32,
@@ -331,7 +343,19 @@ impl EditorState {
         timestamp_ms: u64,
     ) {
         let (cx, cy) = self.viewport.screen_to_canvas(screen_x, screen_y);
+        self.pointer_move_canvas(cx, cy, raw_pressure, tilt_x, tilt_y, timestamp_ms);
+    }
 
+    /// Direct canvas-space pointer move (tracks exact position under mouse/stylus tip)
+    pub fn pointer_move_canvas(
+        &mut self,
+        cx: f32,
+        cy: f32,
+        raw_pressure: f32,
+        tilt_x: f32,
+        tilt_y: f32,
+        timestamp_ms: u64,
+    ) {
         if !self.is_drawing {
             return;
         }
@@ -538,8 +562,10 @@ impl EditorState {
                 || self.active_stylus_tool == TabletTool::Eraser;
 
             if let Some(layer) = self.stack.active_layer_mut() {
-                for dab in dabs {
+                for mut dab in dabs {
                     if is_eraser {
+                        dab.radius = dab.radius.max((self.brush_engine.params().size * 0.5).max(3.0));
+                        dab.opacity = 1.0;
                         BrushTipRasterizer::render_eraser_dab(layer, &dab);
                     } else {
                         BrushTipRasterizer::render_dab(layer, &dab);
@@ -574,6 +600,55 @@ impl EditorState {
         let active = self.stack.active_index;
         self.stack.merge_down(active);
         self.compositor.update_composite(&self.stack);
+    }
+
+    /// Resize canvas to new dimensions, keeping content and rescaling buffers
+    pub fn resize_canvas(&mut self, new_width: u32, new_height: u32, dpi: f32) {
+        if new_width == 0 || new_height == 0 {
+            return;
+        }
+
+        let old_w = self.manifest.canvas_width;
+        let old_h = self.manifest.canvas_height;
+
+        self.manifest.canvas_width = new_width;
+        self.manifest.canvas_height = new_height;
+        self.manifest.dpi = dpi;
+
+        self.stack.width = new_width;
+        self.stack.height = new_height;
+
+        for layer in &mut self.stack.layers {
+            let mut new_pixels = vec![0u8; (new_width * new_height * 4) as usize];
+            let copy_w = old_w.min(new_width) as usize;
+            let copy_h = old_h.min(new_height) as usize;
+
+            for y in 0..copy_h {
+                let src_start = (y * old_w as usize) * 4;
+                let src_end = src_start + copy_w * 4;
+                let dst_start = (y * new_width as usize) * 4;
+                let dst_end = dst_start + copy_w * 4;
+
+                if src_end <= layer.pixels.len() && dst_end <= new_pixels.len() {
+                    new_pixels[dst_start..dst_end].copy_from_slice(&layer.pixels[src_start..src_end]);
+                }
+            }
+
+            layer.width = new_width;
+            layer.height = new_height;
+            layer.pixels = new_pixels;
+        }
+
+        self.compositor.resize(new_width, new_height);
+        self.compositor.update_composite(&self.stack);
+
+        self.selection_mask = SelectionMask::new(new_width, new_height);
+        self.viewport = CanvasViewport::new(
+            self.viewport.screen_width,
+            self.viewport.screen_height,
+            new_width as f32,
+            new_height as f32,
+        );
     }
 
     // --- High-Performance Multithreaded Filters & Tone Adjustments ---

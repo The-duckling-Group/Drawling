@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StabilizerMode {
     Off,
+    Realtime { level: u32 },
     MovingAverage { window_size: usize },
     LazyMouse { rope_length: f32, tension: f32 },
 }
@@ -42,6 +43,28 @@ impl StrokeStabilizer {
     pub fn push(&mut self, pt: StrokePoint) -> Option<StrokePoint> {
         match self.mode {
             StabilizerMode::Off => Some(pt),
+
+            StabilizerMode::Realtime { level } => {
+                if level == 0 {
+                    return Some(pt);
+                }
+                if let Some(prev) = self.lazy_pos {
+                    let alpha = (1.0 / (1.0 + (level as f32) * 0.35)).clamp(0.12, 1.0);
+                    let smoothed = StrokePoint::with_details(
+                        prev.x + (pt.x - prev.x) * alpha,
+                        prev.y + (pt.y - prev.y) * alpha,
+                        prev.pressure + (pt.pressure - prev.pressure) * alpha,
+                        prev.tilt_x + (pt.tilt_x - prev.tilt_x) * alpha,
+                        prev.tilt_y + (pt.tilt_y - prev.tilt_y) * alpha,
+                        pt.timestamp_ms,
+                    );
+                    self.lazy_pos = Some(smoothed);
+                    Some(smoothed)
+                } else {
+                    self.lazy_pos = Some(pt);
+                    Some(pt)
+                }
+            }
 
             StabilizerMode::MovingAverage { window_size } => {
                 let size = window_size.max(1);

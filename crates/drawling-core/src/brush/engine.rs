@@ -22,6 +22,23 @@ pub struct BrushParameters {
     pub tilt_affects_opacity: bool,
     pub tilt_affects_angle: bool,
     pub tilt_aspect_ratio: bool,
+    // IbisPaint taper & fade dynamics (Start/End Width & Opacity)
+    #[serde(default = "default_ratio_one")]
+    pub start_width_ratio: f32,
+    #[serde(default = "default_ratio_one")]
+    pub end_width_ratio: f32,
+    #[serde(default = "default_ratio_one")]
+    pub start_opacity_ratio: f32,
+    #[serde(default = "default_ratio_one")]
+    pub end_opacity_ratio: f32,
+    #[serde(default)]
+    pub fade_in_length: f32,
+    #[serde(default)]
+    pub fade_out_length: f32,
+}
+
+fn default_ratio_one() -> f32 {
+    1.0
 }
 
 impl Default for BrushParameters {
@@ -44,6 +61,12 @@ impl Default for BrushParameters {
             tilt_affects_opacity: false,
             tilt_affects_angle: true,
             tilt_aspect_ratio: true,
+            start_width_ratio: 1.0,
+            end_width_ratio: 1.0,
+            start_opacity_ratio: 1.0,
+            end_opacity_ratio: 1.0,
+            fade_in_length: 0.0,
+            fade_out_length: 0.0,
         }
     }
 }
@@ -65,6 +88,7 @@ pub struct BrushEngine {
     params: BrushParameters,
     last_point: Option<StrokePoint>,
     distance_accumulator: f32,
+    stroke_length_accumulator: f32,
     rng_seed: u64,
 }
 
@@ -74,6 +98,7 @@ impl BrushEngine {
             params,
             last_point: None,
             distance_accumulator: 0.0,
+            stroke_length_accumulator: 0.0,
             rng_seed: 123456789,
         }
     }
@@ -89,6 +114,7 @@ impl BrushEngine {
     pub fn reset_stroke(&mut self) {
         self.last_point = None;
         self.distance_accumulator = 0.0;
+        self.stroke_length_accumulator = 0.0;
     }
 
     // Simple pseudo-random float generator in [-1.0, 1.0]
@@ -107,7 +133,8 @@ impl BrushEngine {
             None => {
                 // First point in stroke
                 self.last_point = Some(current);
-                dabs.push(self.create_dab_at(current));
+                self.stroke_length_accumulator = 0.0;
+                dabs.push(self.create_dab_at(current, 0.0));
                 return dabs;
             }
         };
@@ -127,11 +154,13 @@ impl BrushEngine {
         while covered <= total_dist {
             let t = covered / total_dist;
             let interpolated = prev.lerp(&current, t);
-            dabs.push(self.create_dab_at(interpolated));
+            let dist = self.stroke_length_accumulator + covered;
+            dabs.push(self.create_dab_at(interpolated, dist));
             covered += step_dist;
         }
 
         self.distance_accumulator = total_dist - (covered - step_dist);
+        self.stroke_length_accumulator += total_dist;
         self.last_point = Some(current);
 
         dabs
@@ -155,9 +184,25 @@ impl BrushEngine {
         (self.params.opacity * factor * self.params.flow).clamp(0.0, 1.0)
     }
 
-    fn create_dab_at(&mut self, pt: StrokePoint) -> BrushDab {
+    fn create_dab_at(&mut self, pt: StrokePoint, dist_along_stroke: f32) -> BrushDab {
         let mut radius = self.calculate_radius(pt.pressure);
         let mut opacity = self.calculate_opacity(pt.pressure);
+
+        // Apply start taper (Anfangsbreite & Anfangsdeckkraft)
+        if self.params.fade_in_length > 0.0 && dist_along_stroke < self.params.fade_in_length {
+            let t = (dist_along_stroke / self.params.fade_in_length).clamp(0.0, 1.0);
+            let width_scale = self.params.start_width_ratio + (1.0 - self.params.start_width_ratio) * t;
+            let opacity_scale = self.params.start_opacity_ratio + (1.0 - self.params.start_opacity_ratio) * t;
+            radius *= width_scale;
+            opacity *= opacity_scale;
+        } else if self.params.start_width_ratio < 0.999 && dist_along_stroke < (radius * 8.0).max(12.0) {
+            let eff_len = (radius * 8.0).max(12.0);
+            let t = (dist_along_stroke / eff_len).clamp(0.0, 1.0);
+            let width_scale = self.params.start_width_ratio + (1.0 - self.params.start_width_ratio) * t;
+            let opacity_scale = self.params.start_opacity_ratio + (1.0 - self.params.start_opacity_ratio) * t;
+            radius *= width_scale;
+            opacity *= opacity_scale;
+        }
 
         let tilt_mag = (pt.tilt_x * pt.tilt_x + pt.tilt_y * pt.tilt_y).sqrt().clamp(0.0, 1.0);
 

@@ -82,17 +82,21 @@ graph TD
 
 ## ✨ Key Features
 
-### 1. High-Performance Brush Engine & Stabilization
-- **Real-Time Stroke Smoothing**:
+### 1. High-Performance Brush Engine, IbisPaint Brushes & Stabilization
+- **Authentic IbisPaint Brush Library**:
+  - Preloaded with authentic IbisPaint presets: *Weicher Füllfederstift (Bleiche)*, *Harter Füllfederstift*, *Digitalstift*, *Filzstift (hart)*, *Filzstift (weich)*, *Airbrush (Normal)*, *Bleistift (#1)*, *Wasserfarbe (weich)*, and *G-Pen (Manga Inking)*.
+  - **Start/End Tapering (Anpress-Fading)**: Sliders for Anfangsbreite (Start Width %), Endbreite (End Width %), Anfangsdeckkraft (Start Opacity %), and Enddeckkraft (End Opacity %).
+- **IbisPaint Brush Importer & ABR Support**:
+  - Import brushes directly via IbisPaint QR-Code payloads (base64) or JSON configurations.
+  - Full Adobe Photoshop (`.abr`) brush resource parsing.
+- **Stroke Stabilization (Verwackel-Korrektur)**:
+  - **Echtzeit (Realtime Mode)**: Low-latency exponential filter keeping the pen directly under the mouse or XP-Pen stylus tip without trailing lag.
+  - **Danach (Post-Correction)**: Moving-average curve smoothing.
   - **Lazy Mouse / Rope Mode**: Pulled-string anchor with configurable rope length and tension damping.
-  - **Moving Average**: Windowed smoothing filter providing crisp, responsive inking.
-  - **Catmull-Rom Splines**: Centripetal parameterization ($\alpha = 0.5$) preventing loops, cusps, and self-intersections during rapid pen flicks.
+  - **Pixel-Perfect Alignment**: Screen-to-canvas coordinate mapping guarantees the brush tip dab center precisely follows the mouse pointer and stylus nib.
 - **Sub-Pixel Stamp Engine**:
   - Continuous spacing with sub-pixel dab distribution.
   - Customizable opacity, flow, smoothstep hardness falloff, and stochastic scattering.
-- **Preset Library & ABR Support**:
-  - Built-in presets: *Inking G-Pen*, *Soft Airbrush*, *Hard Round*, *Textured HB Pencil*, *Acrylic Flat*.
-  - Full JSON preset serialization and Adobe Photoshop (`.abr`) brush resource parsing.
 
 ---
 
@@ -112,6 +116,14 @@ graph TD
   - **Button 1**: Instantly sample colors under the stylus via eyedropper.
   - **Button 2**: Secondary shortcut trigger.
 - **Preconfigured Profiles**: Out-of-the-box calibration for `xp_pen_standard()`, `xp_pen_soft()`, `xp_pen_hard()`, `wacom_pro_pen_2()`, and `huion_standard()`.
+
+---
+
+### 2b. Canvas Resize & Aspect Ratio Presets
+- Configurable canvas resolution dialog:
+  - Presets: *1:1 Quadrat (1080x1080)*, *SD (1280x720)*, *Full HD (1920x1080)*, *Story 9:16 (1080x1920)*, *Twitter Header (1500x500)*, *4K UHD (3840x2160)*.
+  - Custom Width, Height, and DPI (72 to 1200 DPI).
+  - Rescales buffers, layer stacks, compositor textures, and viewports on the fly.
 
 ---
 

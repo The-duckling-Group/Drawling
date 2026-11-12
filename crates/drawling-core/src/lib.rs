@@ -13,6 +13,7 @@ pub mod transform;
 
 pub use brush::{
     AbrBrushImporter, BrushDab, BrushEngine, BrushParameters, BrushPreset, BrushTipRasterizer,
+    IbisBrushImporter,
 };
 pub use color::Color;
 pub use filter::{ArtisticFilter, ColorAdjust, GaussianBlur};

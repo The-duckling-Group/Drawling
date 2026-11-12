@@ -297,16 +297,17 @@ impl EditorState {
                 self.lasso_points.push((cx, cy));
             }
 
-            ActiveTool::MagicWand => {
-                if cx >= 0.0 && cx < self.manifest.canvas_width as f32
-                    && cy >= 0.0 && cy < self.manifest.canvas_height as f32
-                {
-                    let x = cx.floor() as u32;
-                    let y = cy.floor() as u32;
-                    if let Some(layer) = self.stack.active_layer() {
-                        self.selection_mask.clear();
-                        self.selection_mask.select_magic_wand(layer, x, y, 32.0, true);
-                    }
+            ActiveTool::MagicWand
+                if cx >= 0.0
+                    && cx < self.manifest.canvas_width as f32
+                    && cy >= 0.0
+                    && cy < self.manifest.canvas_height as f32 =>
+            {
+                let x = cx.floor() as u32;
+                let y = cy.floor() as u32;
+                if let Some(layer) = self.stack.active_layer() {
+                    self.selection_mask.clear();
+                    self.selection_mask.select_magic_wand(layer, x, y, 32.0, true);
                 }
             }
 

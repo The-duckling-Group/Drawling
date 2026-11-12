@@ -1,8 +1,9 @@
 use crate::stroke::point::StrokePoint;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum SymmetryMode {
+    #[default]
     None,
     HorizontalMirror { axis_y: f32 },
     VerticalMirror { axis_x: f32 },
@@ -13,12 +14,6 @@ pub enum SymmetryMode {
         segments: u32,
         mirror: bool,
     },
-}
-
-impl Default for SymmetryMode {
-    fn default() -> Self {
-        SymmetryMode::None
-    }
 }
 
 pub struct SymmetryGuide;

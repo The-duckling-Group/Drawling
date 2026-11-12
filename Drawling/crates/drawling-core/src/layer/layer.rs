@@ -261,7 +261,7 @@ impl LayerStack {
                             let base_layer = &self.layers[base_idx];
                             let pixel_flat_idx = (row * self.width as usize + col) * 4 + 3;
                             let base_alpha = base_layer.pixels[pixel_flat_idx] as f32 / 255.0;
-                            src_px[3] = ((src_px[3] as f32 * base_alpha).round() as u8).min(255);
+                            src_px[3] = (src_px[3] as f32 * base_alpha).round() as u8;
                         }
 
                         let res = mode.composite_pixel(dst_px, src_px, opacity, false);

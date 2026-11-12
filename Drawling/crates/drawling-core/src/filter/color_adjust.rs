@@ -158,6 +158,32 @@ impl ColorAdjust {
     }
 }
 
+fn sample_gradient(stops: &[(f32, Color)], t: f32) -> Color {
+    if stops.len() == 1 || t <= stops[0].0 {
+        return stops[0].1;
+    }
+    if t >= stops[stops.len() - 1].0 {
+        return stops[stops.len() - 1].1;
+    }
+
+    for window in stops.windows(2) {
+        let (p0, c0) = window[0];
+        let (p1, c1) = window[1];
+        if t >= p0 && t <= p1 {
+            let range = p1 - p0;
+            let local_t = if range > 0.0001 { (t - p0) / range } else { 0.0 };
+            return Color::new(
+                c0.r + (c1.r - c0.r) * local_t,
+                c0.g + (c1.g - c0.g) * local_t,
+                c0.b + (c1.b - c0.b) * local_t,
+                c0.a + (c1.a - c0.a) * local_t,
+            );
+        }
+    }
+
+    stops[stops.len() - 1].1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,30 +215,4 @@ mod tests {
         ColorAdjust::gradient_map(&mut layer, &stops);
         assert_eq!(layer.get_pixel(0, 0), Some([255, 0, 0, 255]));
     }
-}
-
-fn sample_gradient(stops: &[(f32, Color)], t: f32) -> Color {
-    if stops.len() == 1 || t <= stops[0].0 {
-        return stops[0].1;
-    }
-    if t >= stops[stops.len() - 1].0 {
-        return stops[stops.len() - 1].1;
-    }
-
-    for window in stops.windows(2) {
-        let (p0, c0) = window[0];
-        let (p1, c1) = window[1];
-        if t >= p0 && t <= p1 {
-            let range = p1 - p0;
-            let local_t = if range > 0.0001 { (t - p0) / range } else { 0.0 };
-            return Color::new(
-                c0.r + (c1.r - c0.r) * local_t,
-                c0.g + (c1.g - c0.g) * local_t,
-                c0.b + (c1.b - c0.b) * local_t,
-                c0.a + (c1.a - c0.a) * local_t,
-            );
-        }
-    }
-
-    stops[stops.len() - 1].1
 }

@@ -1,138 +1,232 @@
 # 🦆 Drawling for Duckling
 
-> **A High-Performance Digital Drawing & Illustration Studio built in Rust.**  
-> Designed for Linux (optimized for KDE Plasma) and Windows, inspired by industry-standard software like IbisPaint and Clip Studio Paint.
+<div align="center">
+
+![Rust](https://img.shields.io/badge/rust-2021%20edition-orange?logo=rust)
+![wgpu](https://img.shields.io/badge/wgpu-0.20-blue?logo=webgpu)
+![Platform](https://img.shields.io/badge/platform-Linux%20(KDE%20Plasma)%20%7C%20Windows-brightgreen)
+![Stylus](https://img.shields.io/badge/stylus-XP--Pen%20%7C%20Wacom%20%7C%20Huion-purple)
+![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue)
+![Tests](https://img.shields.io/badge/tests-47%20passed-success)
+
+**A Next-Generation, GPU-Accelerated Digital Drawing & Illustration Studio Built in Rust.**  
+*Inspired by professional illustration powerhouses like IbisPaint and Clip Studio Paint, engineered with ultra-low latency, multi-threaded Rayon image filters, WGPU hardware acceleration, and full stylus hardware dynamics.*
+
+</div>
 
 ---
 
-## 🌟 Key Architecture & Modular Workspace
+## 📑 Table of Contents
+1. [Architecture & Workspace](#-architecture--workspace)
+2. [Key Features](#-key-features)
+   - [High-Performance Brush Engine & Stabilization](#1-high-performance-brush-engine--stabilization)
+   - [Graphics Tablet & Stylus Support (XP-Pen, Wacom, Huion)](#2-graphics-tablet--stylus-support-xp-pen-wacom-huion)
+   - [Illustration Tools & Vector Shapes](#3-illustration-tools--vector-shapes)
+   - [Advanced Layer System & 13 Blend Modes](#4-advanced-layer-system--13-blend-modes)
+   - [Selection & Transformation Suite](#5-selection--transformation-suite)
+   - [Multi-Threaded Artistic Filters & Color Adjustments](#6-multi-threaded-artistic-filters--color-adjustments)
+   - [File Storage & Local Gallery](#7-file-storage--local-gallery)
+   - [UI / UX Design & Theme Integration](#8-ui--ux-design--theme-integration)
+3. [Keyboard Shortcuts Reference](#-keyboard-shortcuts-reference)
+4. [Building and Running](#-building-and-running)
+5. [License](#-license)
 
-`drawling` is built as an ultra-modular Rust workspace composed of 4 dedicated crates:
+---
+
+## 🏛 Architecture & Workspace
+
+Drawling is built as a modular Rust workspace divided into 4 crates:
+
+```mermaid
+graph TD
+    App["drawling-app<br/>(State Machine, Shortcuts, UI Themes, Event Loop)"]
+    Render["drawling-render<br/>(WGPU Shader Pipeline, Viewport & Compositor)"]
+    Storage["drawling-storage<br/>(.drawling Container, SQLite Gallery, Exporters)"]
+    Core["drawling-core<br/>(Brush Engine, Tablet API, Layers, Filters, Tools)"]
+
+    App --> Render
+    App --> Storage
+    App --> Core
+    Render --> Core
+    Storage --> Core
+```
 
 ```
-drawling/
+Drawling/
 ├── crates/
-│   ├── drawling-core/       # Pure high-performance math, stroke stabilization, brush engine, tools, layers, filters
-│   ├── drawling-storage/    # .drawling container format, SQLite gallery database, PNG/JPEG/SVG exporters
-│   ├── drawling-render/     # WGPU shader pipeline (WGSL) & Rayon-accelerated canvas compositor
-│   └── drawling-app/        # Desktop application orchestration, state machine, theme & shortcut manager
+│   ├── drawling-core/       # Core math, brush engine, tablet calibration, filters, tools & layer stack
+│   ├── drawling-storage/    # .drawling container (ZIP/JSON), SQLite project gallery, PNG/JPEG/SVG export
+│   ├── drawling-render/     # WGPU WGSL pipeline, canvas viewport, Rayon multi-threaded compositor
+│   └── drawling-app/        # Desktop application orchestration, state management, shortcuts & themes
 ├── Cargo.toml
 └── README.md
 ```
 
 ---
 
-## 🎨 Features & Capabilities
+## ✨ Key Features
 
-### 1. High-Performance Brush Engine & Real-Time Stabilization
-- **Stroke Stabilization**:
-  - **Lazy Mouse / Rope Mode**: Pulled-string anchor model with adjustable rope radius and damping tension.
-  - **Moving Average**: Windowed smoothing filter for responsive stylus input.
-  - **Catmull-Rom Splines**: Centripetal parameterization ($\alpha = 0.5$) preventing loops, sharp cusps, and self-intersections during rapid strokes.
-- **Brush Dynamics**:
-  - Sub-pixel dab generation with spacing, flow, scatter dispersion, and smoothstep hardness falloff.
-  - Rotated elliptical dabs deformed dynamically based on stylus altitude and azimuth angles.
-- **XP-Pen & Graphics Tablet / Stylus Support**:
-  - **8,192 Levels of Pressure**: Native support for XP-Pen, Wacom Pro Pen 2, and Huion digitizers with configurable response curves (`Linear`, `Soft`, `Hard`, `Gamma`, `Bezier`).
-  - **Hardware Deadzone Calibration**: 1.5% deadzone filter preventing resting-hand / feather-touch scratches.
-  - **3D Tilt Dynamics ($\pm 60^\circ$)**: Real-time conversion of raw X/Y tilt angles to altitude and azimuth vectors; activates brush diameter expansion, directional opacity fading, and elliptical aspect ratio deformation (ideal for HB pencil flat shading).
-  - **Inverted Physical Eraser Tip**: Automatic detection of flipped stylus (`TabletTool::Eraser`) to dynamically erase without manual toolbar toggling.
-  - **Dual Barrel Buttons**: Ergonomic shortcuts with primary barrel button (Button 1) sampling colors under the cursor instantly via eyedropper.
-  - **Manufacturer Calibration Presets**: Built-in configurations for `xp_pen_standard()`, `xp_pen_soft()`, `xp_pen_hard()`, `wacom_pro_pen_2()`, and `huion_standard()`.
-- **Brush Presets & Extensibility**:
-  - Built-in library: Inking G-Pen, Soft Airbrush, Hard Round, Textured HB Pencil, Acrylic Flat.
+### 1. High-Performance Brush Engine & Stabilization
+- **Real-Time Stroke Smoothing**:
+  - **Lazy Mouse / Rope Mode**: Pulled-string anchor with configurable rope length and tension damping.
+  - **Moving Average**: Windowed smoothing filter providing crisp, responsive inking.
+  - **Catmull-Rom Splines**: Centripetal parameterization ($\alpha = 0.5$) preventing loops, cusps, and self-intersections during rapid pen flicks.
+- **Sub-Pixel Stamp Engine**:
+  - Continuous spacing with sub-pixel dab distribution.
+  - Customizable opacity, flow, smoothstep hardness falloff, and stochastic scattering.
+- **Preset Library & ABR Support**:
+  - Built-in presets: *Inking G-Pen*, *Soft Airbrush*, *Hard Round*, *Textured HB Pencil*, *Acrylic Flat*.
   - Full JSON preset serialization and Adobe Photoshop (`.abr`) brush resource parsing.
-
-### 2. Illustration Tools & Vector Shapes
-- **Smudge & Color Blending Engine**:
-  - Natural paint pickup, blending, and color dragging across canvas strokes with adjustable bleed and strength.
-- **Flood Fill (Bucket Tool)**:
-  - 4-way BFS flood fill with Euclidean color distance tolerance and contiguous/global modes.
-  - **Lineart Halo Expansion (Dilation)**: Expands fill $N$ pixels underneath lineart borders to eliminate white halos.
-- **Geometric Vector Shapes**:
-  - Anti-aliased straight lines with stroke width.
-  - Outlined and filled Rectangles and Ellipses.
-  - Regular Stars with customizable ray counts and inner/outer radius ratios.
-- **Eyedropper / Color Picker**:
-  - Point ($1\times1$) and area ($3\times3$, $5\times5$) alpha-weighted sampling from active layer or composited canvas stack.
-
-### 3. Artist Palettes & Color Management
-- **Built-in Illustration Palettes**:
-  - **Neon Cyberpunk**: Electric cyan, neon crimson, acid yellow, cyber violet, matrix green.
-  - **Anime & Portrait Skin Tones**: Light highlights, midtones, and deep shadow skin shades.
-  - **Manga Inking & Screentone**: Pure black, 10%, 20%, 30%, 50%, 70% dot tones, pure white.
-  - **Pastel Anime**: Soft sakura pink, peach, mint cream, aqua, periwinkle, lavender.
-  - **Classic Oil & Gouache**: Burnt sienna, ochre, ultramarine, British racing green, cadmium red.
-- **Recent Colors Buffer**: Automatic FIFO ring-buffer tracking recently used swatches.
-- **Hex Import/Export**: Quick import/export of color palettes from hex lists.
-
-### 4. Advanced Layer Management
-- **13 Blend Modes** implemented with mathematical precision:
-  `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`, `Color Dodge`, `Color Burn`, `Add (Linear Dodge)`, `Subtract`, `Difference`, `Soft Light`, `Hard Light`.
-- **Clipping Masks**: Clip any layer against the alpha channel of base layers below.
-- **Alpha Lock**: Paint exclusively within existing pixel boundaries without expanding transparency.
-- **Hierarchical Layer Stack**: Add, duplicate, reorder, merge down, flatten, and adjust opacity.
-
-### 5. Selection & Transformation Tools
-- **Selection Tools**:
-  - Rectangle and Ellipse selections.
-  - **Freehand Lasso**: Polygon scanline rasterization with even-odd fill rules.
-  - **Magic Wand**: Flood fill with Euclidean color-distance tolerance and edge feathering.
-  - **Boolean Mask Operations**: Union, Subtract, Intersect, Expand, and Shrink.
-- **Transformations**:
-  - 2D Affine Transformation matrix (Translation, Rotation, Scaling, Skew) with high-quality Bilinear Resampling.
-  - Mesh-Warp grid and Perspective vanishing-point guides with angular snapping.
-- **Symmetry Guides**:
-  - Horizontal & Vertical mirror axes, dual-axis cross reflection.
-  - **N-Fold Radial Symmetry** (Kaleidoscope / Mandala drawing with optional mirror flipping).
-
-### 6. Multi-Threaded Image Processing & Artistic Filters (Rayon)
-- **Gaussian Blur**: Multi-threaded separable 1D convolution with arbitrary radius ($\sigma$).
-- **Motion Blur**: Directional linear blur with configurable angle and distance.
-- **Radial / Zoom Blur**: Blur radiating outward from a focus point for dynamic action effects.
-- **Unsharp Mask**: Edge-enhancing high-pass filter with radius, amount, and threshold.
-- **Manga Halftone (Screentone)**: Rotated dot grid pattern generator for authentic comic shading.
-- **Chromatic Aberration**: Optical color fringing displacement for retro lens styling.
-- **Bloom / Glow**: Luminance thresholding, Gaussian blur, and additive screen blend.
-- **Mosaic / Pixelate**: Block-based color averaging for retro or stylized effects.
-- **Film Grain / Noise**: Monochromatic or RGB pseudo-random photographic texture.
-- **Posterize & Threshold**: Color quantization and strict binary black/white conversion.
-- **Levels & Curves**: Comprehensive tone curve adjustment with black point, white point, and midtone gamma.
-- **Color Adjustments**: Real-time Brightness/Contrast, Hue/Saturation, Invert, Sepia, Vignette, and Gradient Map.
-
-### 7. File Formats & Local Gallery
-- **`.drawling` Container Format**:
-  - Compressed zip archive holding `project.json` (metadata, canvas dimensions, layer stack), `thumbnail.png`, and lossless PNG buffers for each layer (`layers/{layer_id}.png`).
-- **Export Pipelines**: Lossless PNG, JPEG (with quality control & white-matte alpha composition), scalable SVG with embedded high-res assets.
-- **Local Gallery (SQLite)**:
-  - Local SQLite database (`projects.db`) storing artwork records, thumbnails, creation/modification timestamps, tags, and editing duration.
-  - Auto-save journal for crash-recovery and undo history.
-
-### 8. UI / UX Design ("Smooth & Clean")
-- **Themes**:
-  - **KDE Plasma Breeze Dark** (`#232629` surface, `#3daee9` Plasma blue accent).
-  - **Modern Windows 11 Dark** (Mica dark slate, `#60cdff` accent).
-- **Zen-Mode**: Toggle with `Tab` or `F11` to hide all UI chrome for distraction-free illustration.
-- **Keyboard Shortcut Manager**:
-  - Tools: Brush (`B`), Eraser (`E`), Smudge (`J`), Bucket (`G`), Eyedropper (`I`), Shape (`U`), Lasso (`L`), Magic Wand (`W`), Transform (`Ctrl+T`).
-  - Filters: Invert (`Ctrl+I`), Levels (`Ctrl+L`), Hue/Sat (`Ctrl+U`), Blur (`Ctrl+Alt+B`), Motion Blur (`Ctrl+Alt+M`).
-  - Standard: Undo (`Ctrl+Z`), Redo (`Ctrl+Y`), Save (`Ctrl+S`), Export (`Ctrl+E`), Zen-mode (`Tab`/`F11`).
 
 ---
 
-## 🚀 Running the Project
+### 2. Graphics Tablet & Stylus Support (XP-Pen, Wacom, Huion)
+- **8,192 Pressure Levels**: Full high-resolution digitizer input mapped through customizable curves:
+  - `Linear`
+  - `Soft` ($\gamma = 0.65$, sensitive for light touch)
+  - `Hard` ($\gamma = 1.6$, requiring firm pressure for heavy strokes)
+  - `Bezier` & `Gamma`
+- **Hardware Deadzone Thresholding (1.5%)**: Eliminates unwanted resting-hand scratches.
+- **3D Tilt Dynamics ($\pm 60^\circ$)**:
+  - Converts raw tilt coordinates into 3D azimuth and altitude vectors.
+  - **Rotated Elliptical Dabs**: Dynamically deforms the brush dab into an angled ellipse matching stylus orientation (essential for realistic pencil shading).
+- **Inverted Physical Eraser Tip**:
+  - Automatically activates eraser mode when flipping the pen (`TabletTool::Eraser`) without requiring toolbar switching.
+- **Stylus Barrel Buttons**:
+  - **Button 1**: Instantly sample colors under the stylus via eyedropper.
+  - **Button 2**: Secondary shortcut trigger.
+- **Preconfigured Profiles**: Out-of-the-box calibration for `xp_pen_standard()`, `xp_pen_soft()`, `xp_pen_hard()`, `wacom_pro_pen_2()`, and `huion_standard()`.
 
-### Run Unit Tests
+---
+
+### 3. Illustration Tools & Vector Shapes
+- **Smudge & Color Dragging Engine**: Realistic paint pickup, wet-on-wet blending, and color bleeding across adjacent strokes.
+- **Flood Fill (Bucket Tool)**:
+  - 4-way BFS flood fill with Euclidean color distance tolerance.
+  - **Lineart Halo Expansion (Dilation)**: Expands fill $N$ pixels beneath lineart borders to eliminate white fringing.
+- **Geometric Vector Shapes**:
+  - Anti-aliased straight lines with stroke thickness.
+  - Outlined and filled Rectangles and Ellipses.
+  - Regular Stars with customizable ray counts and inner/outer radius ratios.
+- **Color Palettes**:
+  - 5 artist-curated palettes: *Neon Cyberpunk*, *Anime Skin Tones*, *Manga Screentone*, *Pastel Anime*, *Classic Oil & Gouache*.
+  - Automatic FIFO Recent Colors buffer and Hex import/export.
+
+---
+
+### 4. Advanced Layer System & 13 Blend Modes
+- **13 Mathematically Exact Blend Modes**:
+  `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`, `Color Dodge`, `Color Burn`, `Add (Linear Dodge)`, `Subtract`, `Difference`, `Soft Light`, `Hard Light`.
+- **Clipping Masks**: Clip any layer to the silhouette and alpha channel of base layers.
+- **Alpha Lock**: Paint strictly within existing non-transparent pixels.
+- **Layer Stack Management**: Unlimited layers, reordering, duplicate, merge down, and opacity adjustment.
+
+---
+
+### 5. Selection & Transformation Suite
+- **Selection Tools**:
+  - Rectangle and Ellipse marquee tools.
+  - **Freehand Lasso**: Polygon scanline rasterization with even-odd fill rules.
+  - **Magic Wand**: Flood selection with Euclidean color tolerance and anti-aliased edge feathering.
+  - **Boolean Mask Logic**: Union, Subtract, Intersect, Expand, and Contract.
+- **Transformations**:
+  - 2D Affine Transformation matrix (Translation, Rotation, Scaling, Skew) with high-fidelity Bilinear Interpolation.
+  - Mesh-Warp grid interpolation and Perspective vanishing-point guides with angle snapping.
+- **Symmetry Guides**:
+  - Horizontal & Vertical mirror reflection axes.
+  - **$N$-Fold Radial Symmetry** (Mandala & Kaleidoscope illustration).
+
+---
+
+### 6. Multi-Threaded Artistic Filters & Color Adjustments
+Accelerated via **Rayon** across all CPU cores:
+- **Gaussian Blur**: Multi-threaded separable 1D convolution with arbitrary radius ($\sigma$).
+- **Motion Blur**: Directional linear blur with configurable angle and distance.
+- **Radial / Zoom Blur**: Focus-point zoom blur for dramatic action lines.
+- **Unsharp Mask**: Edge-enhancing high-pass sharpening.
+- **Manga Halftone (Screentone)**: Rotated dot grid pattern generator for comic shading.
+- **Chromatic Aberration**: Optical lens RGB displacement.
+- **Bloom / Glow**: Luminance thresholding, Gaussian blur, and additive screen blend.
+- **Mosaic / Pixelate**: Block-based pixel color averaging.
+- **Film Grain & Noise**: Monochromatic and RGB photographic noise texture.
+- **Tone Adjustments**: Levels (Black/White/Gamma), Invert, Sepia, Hue/Saturation, Brightness/Contrast, Vignette, Gradient Map.
+
+---
+
+### 7. File Storage & Local Gallery
+- **`.drawling` Open Container Format**:
+  - Lossless compressed ZIP archive containing:
+    - `project.json`: Complete project manifest, layer hierarchy, blend modes, and timestamps.
+    - `thumbnail.png`: High-resolution artwork preview.
+    - `layers/{layer_id}.png`: Lossless PNG buffers for each individual layer.
+- **Export Formats**: PNG (lossless 32-bit), JPEG (quality-controlled with matte background composition), and SVG (scalable vector format with embedded raster data).
+- **Local Gallery Database (SQLite)**:
+  - Local database (`projects.db`) indexing project titles, file paths, thumbnails, tags, and editing duration.
+  - Auto-save journaling for crash recovery.
+
+---
+
+### 8. UI / UX Design & Theme Integration
+- **Modern Themes**:
+  - **KDE Plasma Breeze Dark**: Native `#232629` dark surface with `#3daee9` Plasma accent.
+  - **Windows 11 Dark**: Fluent slate dark theme with `#60cdff` accent.
+- **Zen Mode**: Press `Tab` or `F11` to hide all UI panels for distraction-free painting.
+- **Sub-Pixel Pan, Zoom & Rotation Viewport**: Smooth zooming (5% to 5000%) with anchored coordinate transforms.
+
+---
+
+## ⌨️ Keyboard Shortcuts Reference
+
+| Shortcut | Action | Description |
+|:---|:---|:---|
+| `B` | **Brush Tool** | Standard raster/inking brush |
+| `E` | **Eraser Tool** | Switch to eraser (or flip physical stylus) |
+| `J` | **Smudge Tool** | Paint blending & dragging |
+| `G` | **Bucket Tool** | Flood fill with expansion |
+| `I` | **Eyedropper** | Color sampling (or barrel button 1) |
+| `U` | **Shape Tool** | Line, Rect, Ellipse, Star |
+| `L` | **Lasso Tool** | Freehand polygon selection |
+| `W` | **Magic Wand** | Color-tolerance selection |
+| `Ctrl + T` | **Transform** | Free transform & warp |
+| `Ctrl + Z` | **Undo** | Step backward in history stack |
+| `Ctrl + Y` | **Redo** | Step forward in history stack |
+| `Ctrl + S` | **Save** | Save project as `.drawling` archive |
+| `Ctrl + E` | **Export** | Quick export to PNG |
+| `Tab` / `F11` | **Zen Mode** | Toggle distraction-free full canvas mode |
+| `Ctrl + I` | **Invert Filter** | Invert active layer colors |
+| `Ctrl + L` | **Levels Filter** | Open Levels & Curves tone adjustment |
+| `Ctrl + U` | **Hue / Saturation** | Adjust hue, saturation, and lightness |
+| `Ctrl + Alt + B`| **Gaussian Blur** | Apply multi-threaded Gaussian blur |
+| `Ctrl + Alt + M`| **Motion Blur** | Apply directional motion blur |
+
+---
+
+## 🚀 Building and Running
+
+### Prerequisites
+- [Rust](https://www.rust-lang.org/) (2021 Edition, MSRV 1.75+)
+- Modern GPU supporting Vulkan, DirectX 12, or Metal (for `wgpu`)
+
+### Run All Unit & Integration Tests
 ```bash
 cargo test --workspace
 ```
 
-### Run the Full System Verification & Benchmark
+### Run System Benchmark & Verification Suite
 ```bash
 cargo run --release -p drawling-app -- --demo
+```
+
+### Run Interactive Application
+```bash
+cargo run --release -p drawling-app
 ```
 
 ---
 
 ## 📄 License
-Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE).
+Licensed under either of:
+- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
+- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option.

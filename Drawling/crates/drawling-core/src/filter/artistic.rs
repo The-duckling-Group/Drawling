@@ -163,7 +163,7 @@ impl ArtisticFilter {
             let darkness = if invert { lum } else { 1.0 - lum };
 
             // Dot radius proportional to darkness
-            let max_radius = dot_size * 0.7071;
+            let max_radius = dot_size * std::f32::consts::FRAC_1_SQRT_2;
             let dot_radius = darkness * max_radius;
 
             if dist_from_center <= dot_radius {

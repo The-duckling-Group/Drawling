@@ -31,7 +31,14 @@ drawling/
   - **Catmull-Rom Splines**: Centripetal parameterization ($\alpha = 0.5$) preventing loops, sharp cusps, and self-intersections during rapid strokes.
 - **Brush Dynamics**:
   - Sub-pixel dab generation with spacing, flow, scatter dispersion, and smoothstep hardness falloff.
-  - Pressure and tilt sensitivity (ready for Wintab, X11, Wayland stylus tablets).
+  - Rotated elliptical dabs deformed dynamically based on stylus altitude and azimuth angles.
+- **XP-Pen & Graphics Tablet / Stylus Support**:
+  - **8,192 Levels of Pressure**: Native support for XP-Pen, Wacom Pro Pen 2, and Huion digitizers with configurable response curves (`Linear`, `Soft`, `Hard`, `Gamma`, `Bezier`).
+  - **Hardware Deadzone Calibration**: 1.5% deadzone filter preventing resting-hand / feather-touch scratches.
+  - **3D Tilt Dynamics ($\pm 60^\circ$)**: Real-time conversion of raw X/Y tilt angles to altitude and azimuth vectors; activates brush diameter expansion, directional opacity fading, and elliptical aspect ratio deformation (ideal for HB pencil flat shading).
+  - **Inverted Physical Eraser Tip**: Automatic detection of flipped stylus (`TabletTool::Eraser`) to dynamically erase without manual toolbar toggling.
+  - **Dual Barrel Buttons**: Ergonomic shortcuts with primary barrel button (Button 1) sampling colors under the cursor instantly via eyedropper.
+  - **Manufacturer Calibration Presets**: Built-in configurations for `xp_pen_standard()`, `xp_pen_soft()`, `xp_pen_hard()`, `wacom_pro_pen_2()`, and `huion_standard()`.
 - **Brush Presets & Extensibility**:
   - Built-in library: Inking G-Pen, Soft Airbrush, Hard Round, Textured HB Pencil, Acrylic Flat.
   - Full JSON preset serialization and Adobe Photoshop (`.abr`) brush resource parsing.

@@ -1,10 +1,6 @@
-mod shortcuts;
-mod state;
-mod theme;
-
+use drawling_app::{ActiveTool, EditorState};
 use drawling_core::*;
 use drawling_storage::*;
-use state::{ActiveTool, EditorState};
 use std::time::Instant;
 
 fn main() {

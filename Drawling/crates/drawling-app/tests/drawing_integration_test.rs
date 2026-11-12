@@ -166,3 +166,120 @@ fn test_advanced_tools_and_artistic_filters_workflow() {
     let active_count = layer.pixels.chunks_exact(4).filter(|px| px[3] > 0).count();
     assert!(active_count > 50, "Layer should contain painted pixels after artistic pipeline");
 }
+
+#[test]
+fn test_xp_pen_stylus_pressure_tilt_and_eraser_workflow() {
+    let mut editor = drawling_app::EditorState::new("XP-Pen Tablet Test", 128, 128, 128.0, 128.0);
+    editor.viewport.zoom = 1.0;
+    editor.viewport.pan_x = 0.0;
+    editor.viewport.pan_y = 0.0;
+    let art_layer = editor.stack.add_layer("Artwork Layer");
+    editor.stack.active_index = art_layer;
+
+    // 1. Verify default tablet profile is XP-Pen with 8192 levels
+    assert_eq!(editor.tablet_profile.manufacturer, "XP-Pen");
+    assert_eq!(editor.tablet_profile.max_pressure_levels, 8192);
+    assert!(editor.tablet_profile.supports_tilt);
+
+    // 2. Simulate Stylus Hover (Proximity)
+    editor.handle_tablet_event(TabletInputEvent::Hover {
+        x: 64.0,
+        y: 64.0,
+        tilt_x: 30.0,
+        tilt_y: 10.0,
+        tool: TabletTool::Pen,
+    });
+    assert!(editor.is_stylus_hovering);
+    assert_eq!(editor.active_stylus_tool, TabletTool::Pen);
+
+    // 3. Stylus Pen Down with 8192-level pressure and tilt
+    editor.set_primary_color(Color::RED);
+    editor.handle_tablet_event(TabletInputEvent::Down {
+        x: 20.0,
+        y: 64.0,
+        pressure: 0.75, // 75% force on XP-Pen stylus
+        tilt_x: 45.0,
+        tilt_y: 0.0,
+        tool: TabletTool::Pen,
+        buttons: StylusButtons {
+            tip: true,
+            button1: false,
+            button2: false,
+            button3: false,
+        },
+    });
+
+    // 4. Stylus Motion along line
+    for step in 1..=10 {
+        let x = 20.0 + (step as f32 * 5.0);
+        editor.handle_tablet_event(TabletInputEvent::Motion {
+            x,
+            y: 64.0,
+            pressure: 0.75,
+            tilt_x: 45.0,
+            tilt_y: 0.0,
+            tool: TabletTool::Pen,
+            buttons: StylusButtons {
+                tip: true,
+                button1: false,
+                button2: false,
+                button3: false,
+            },
+            timestamp_ms: step * 10,
+        });
+    }
+
+    // 5. Stylus Up
+    editor.handle_tablet_event(TabletInputEvent::Up {
+        tool: TabletTool::Pen,
+    });
+
+    // Verify drawn red pixels
+    let painted_count = editor.stack.layers[art_layer]
+        .pixels
+        .chunks_exact(4)
+        .filter(|px| px[0] > 200)
+        .count();
+    assert!(painted_count > 10, "XP-Pen stylus stroke should paint pixels");
+
+    // 6. Test Barrel Button 1 (Eyedropper quick sample)
+    editor.handle_tablet_event(TabletInputEvent::Down {
+        x: 30.0,
+        y: 64.0,
+        pressure: 0.5,
+        tilt_x: 0.0,
+        tilt_y: 0.0,
+        tool: TabletTool::Pen,
+        buttons: StylusButtons {
+            tip: false,
+            button1: true, // Eyedropper sampled under cursor
+            button2: false,
+            button3: false,
+        },
+    });
+    assert_eq!(editor.primary_color.r, 1.0, "Barrel button 1 should sample red color under stylus");
+
+    // 7. Test Inverted Stylus Physical Eraser (flipping the pen)
+    editor.handle_tablet_event(TabletInputEvent::Down {
+        x: 30.0,
+        y: 64.0,
+        pressure: 0.9,
+        tilt_x: 0.0,
+        tilt_y: 0.0,
+        tool: TabletTool::Eraser, // Pen inverted
+        buttons: StylusButtons {
+            tip: true,
+            button1: false,
+            button2: false,
+            button3: false,
+        },
+    });
+
+    editor.handle_tablet_event(TabletInputEvent::Up {
+        tool: TabletTool::Eraser,
+    });
+
+    // Erased pixel should now be erased
+    let erased = editor.stack.layers[art_layer].get_color(30, 64).unwrap();
+    assert_eq!(erased.a, 0.0, "Physical eraser tip should erase underlying paint");
+}

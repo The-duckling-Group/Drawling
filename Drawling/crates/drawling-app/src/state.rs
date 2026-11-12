@@ -67,6 +67,12 @@ pub struct EditorState {
     pub secondary_color: Color,
     pub active_tool: ActiveTool,
     pub tool_options: ToolOptions,
+    pub tablet_profile: TabletCalibrationProfile,
+    pub active_stylus_tool: TabletTool,
+    pub is_stylus_hovering: bool,
+    pub stylus_hover_pos: Option<(f32, f32)>,
+    pub stylus_tilt: (f32, f32),
+    pub last_barrel_buttons: StylusButtons,
     pub active_palette: ColorPalette,
     pub available_palettes: Vec<ColorPalette>,
     pub recent_colors: RecentColors,
@@ -145,6 +151,12 @@ impl EditorState {
             secondary_color: Color::WHITE,
             active_tool: ActiveTool::Brush,
             tool_options: ToolOptions::default(),
+            tablet_profile: TabletCalibrationProfile::xp_pen_standard(),
+            active_stylus_tool: TabletTool::Pen,
+            is_stylus_hovering: false,
+            stylus_hover_pos: None,
+            stylus_tilt: (0.0, 0.0),
+            last_barrel_buttons: StylusButtons::default(),
             active_palette: default_palette,
             available_palettes,
             recent_colors,
@@ -175,13 +187,34 @@ impl EditorState {
         self.recent_colors.push(color);
     }
 
-    /// Pen down: begins drawing stroke, shape, fill or selection
+    /// Standard pointer down (delegates with zero tilt)
     pub fn pointer_down(&mut self, screen_x: f32, screen_y: f32, pressure: f32) {
+        self.pointer_down_with_details(screen_x, screen_y, pressure, 0.0, 0.0);
+    }
+
+    /// Stylus pointer down with pressure and tilt (XP-Pen, Wacom, Huion)
+    pub fn pointer_down_with_details(
+        &mut self,
+        screen_x: f32,
+        screen_y: f32,
+        raw_pressure: f32,
+        tilt_x: f32,
+        tilt_y: f32,
+    ) {
         let (cx, cy) = self.viewport.screen_to_canvas(screen_x, screen_y);
         self.stroke_start_canvas = Some((cx, cy));
         self.last_canvas_pos = Some((cx, cy));
+        self.stylus_tilt = (tilt_x, tilt_y);
 
-        match self.active_tool {
+        let pressure = self.tablet_profile.pressure_curve.map(raw_pressure);
+
+        let effective_tool = if self.active_stylus_tool == TabletTool::Eraser {
+            ActiveTool::Eraser
+        } else {
+            self.active_tool
+        };
+
+        match effective_tool {
             ActiveTool::Brush | ActiveTool::Eraser => {
                 let _active_layer_id = match self.stack.active_layer() {
                     Some(l) if !l.locked => l.id,
@@ -196,7 +229,7 @@ impl EditorState {
                     self.current_stroke_before_pixels = Some(layer.pixels.clone());
                 }
 
-                let raw_pt = StrokePoint::new(cx, cy, pressure);
+                let raw_pt = StrokePoint::with_details(cx, cy, pressure, tilt_x, tilt_y, 0);
                 if let Some(stab_pt) = self.stabilizer.push(raw_pt) {
                     self.render_stroke_point(stab_pt);
                 }
@@ -281,17 +314,39 @@ impl EditorState {
         }
     }
 
-    /// Pen move
+    /// Standard pointer move (delegates with zero tilt)
     pub fn pointer_move(&mut self, screen_x: f32, screen_y: f32, pressure: f32) {
+        self.pointer_move_with_details(screen_x, screen_y, pressure, 0.0, 0.0, 0);
+    }
+
+    /// Stylus pointer move with dynamic pressure, tilt, and high-res timestamp
+    pub fn pointer_move_with_details(
+        &mut self,
+        screen_x: f32,
+        screen_y: f32,
+        raw_pressure: f32,
+        tilt_x: f32,
+        tilt_y: f32,
+        timestamp_ms: u64,
+    ) {
         let (cx, cy) = self.viewport.screen_to_canvas(screen_x, screen_y);
 
         if !self.is_drawing {
             return;
         }
 
-        match self.active_tool {
+        self.stylus_tilt = (tilt_x, tilt_y);
+        let pressure = self.tablet_profile.pressure_curve.map(raw_pressure);
+
+        let effective_tool = if self.active_stylus_tool == TabletTool::Eraser {
+            ActiveTool::Eraser
+        } else {
+            self.active_tool
+        };
+
+        match effective_tool {
             ActiveTool::Brush | ActiveTool::Eraser => {
-                let raw_pt = StrokePoint::new(cx, cy, pressure);
+                let raw_pt = StrokePoint::with_details(cx, cy, pressure, tilt_x, tilt_y, timestamp_ms);
                 if let Some(stab_pt) = self.stabilizer.push(raw_pt) {
                     self.render_stroke_point(stab_pt);
                 }
@@ -311,6 +366,57 @@ impl EditorState {
         }
 
         self.last_canvas_pos = Some((cx, cy));
+    }
+
+    /// High-level tablet event dispatcher (handles proximity, pressure mapping,
+    /// inverted eraser detection, and barrel buttons).
+    pub fn handle_tablet_event(&mut self, event: TabletInputEvent) {
+        match event {
+            TabletInputEvent::ProximityIn { tool } => {
+                self.is_stylus_hovering = true;
+                self.active_stylus_tool = tool;
+            }
+            TabletInputEvent::ProximityOut { .. } => {
+                self.is_stylus_hovering = false;
+                self.stylus_hover_pos = None;
+            }
+            TabletInputEvent::Hover { x, y, tilt_x, tilt_y, tool } => {
+                self.is_stylus_hovering = true;
+                self.stylus_hover_pos = Some((x, y));
+                self.stylus_tilt = (tilt_x, tilt_y);
+                self.active_stylus_tool = tool;
+            }
+            TabletInputEvent::Down { x, y, pressure, tilt_x, tilt_y, tool, buttons } => {
+                self.active_stylus_tool = tool;
+                self.last_barrel_buttons = buttons;
+
+                // Primary barrel button (Button 1): sample color directly under pen tip
+                if buttons.button1 {
+                    let (cx, cy) = self.viewport.screen_to_canvas(x, y);
+                    let picked = ColorPicker::sample_stack(
+                        &self.stack,
+                        cx.round() as i32,
+                        cy.round() as i32,
+                        self.tool_options.eyedropper_radius,
+                    );
+                    if picked.a > 0.0 {
+                        self.set_primary_color(picked);
+                    }
+                    return;
+                }
+
+                self.pointer_down_with_details(x, y, pressure, tilt_x, tilt_y);
+            }
+            TabletInputEvent::Motion { x, y, pressure, tilt_x, tilt_y, tool, buttons, timestamp_ms } => {
+                self.active_stylus_tool = tool;
+                self.last_barrel_buttons = buttons;
+                self.pointer_move_with_details(x, y, pressure, tilt_x, tilt_y, timestamp_ms);
+            }
+            TabletInputEvent::Up { tool } => {
+                self.active_stylus_tool = tool;
+                self.pointer_up();
+            }
+        }
     }
 
     /// Pen lift
@@ -427,14 +533,16 @@ impl EditorState {
 
         for sym_pt in sym_points {
             let dabs = self.brush_engine.push_point(sym_pt);
-            let is_eraser = self.active_tool == ActiveTool::Eraser;
+            let is_eraser = self.active_tool == ActiveTool::Eraser
+                || self.active_stylus_tool == TabletTool::Eraser;
 
             if let Some(layer) = self.stack.active_layer_mut() {
-                for mut dab in dabs {
+                for dab in dabs {
                     if is_eraser {
-                        dab.color = Color::TRANSPARENT;
+                        BrushTipRasterizer::render_eraser_dab(layer, &dab);
+                    } else {
+                        BrushTipRasterizer::render_dab(layer, &dab);
                     }
-                    BrushTipRasterizer::render_dab(layer, &dab);
                 }
             }
         }

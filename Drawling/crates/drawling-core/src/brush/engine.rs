@@ -17,6 +17,11 @@ pub struct BrushParameters {
     pub size_by_pressure: bool,
     pub opacity_by_pressure: bool,
     pub color: Color,
+    // Stylus tilt dynamics (XP-Pen, Wacom, Huion)
+    pub tilt_affects_size: bool,
+    pub tilt_affects_opacity: bool,
+    pub tilt_affects_angle: bool,
+    pub tilt_aspect_ratio: bool,
 }
 
 impl Default for BrushParameters {
@@ -35,6 +40,10 @@ impl Default for BrushParameters {
             size_by_pressure: true,
             opacity_by_pressure: true,
             color: Color::BLACK,
+            tilt_affects_size: false,
+            tilt_affects_opacity: false,
+            tilt_affects_angle: true,
+            tilt_aspect_ratio: true,
         }
     }
 }
@@ -47,6 +56,8 @@ pub struct BrushDab {
     pub opacity: f32,
     pub hardness: f32,
     pub color: Color,
+    pub aspect_ratio: f32, // 1.0 = circular, <1.0 = flattened elliptical dab
+    pub angle_rad: f32,    // rotation angle for directional/tilted dabs
 }
 
 #[derive(Debug, Clone)]
@@ -145,8 +156,30 @@ impl BrushEngine {
     }
 
     fn create_dab_at(&mut self, pt: StrokePoint) -> BrushDab {
-        let radius = self.calculate_radius(pt.pressure);
-        let opacity = self.calculate_opacity(pt.pressure);
+        let mut radius = self.calculate_radius(pt.pressure);
+        let mut opacity = self.calculate_opacity(pt.pressure);
+
+        let tilt_mag = (pt.tilt_x * pt.tilt_x + pt.tilt_y * pt.tilt_y).sqrt().clamp(0.0, 1.0);
+
+        if self.params.tilt_affects_size && tilt_mag > 0.01 {
+            radius *= 1.0 + tilt_mag * 0.75;
+        }
+
+        if self.params.tilt_affects_opacity && tilt_mag > 0.01 {
+            opacity = (opacity * (1.0 - tilt_mag * 0.3)).clamp(0.01, 1.0);
+        }
+
+        let angle_rad = if self.params.tilt_affects_angle && tilt_mag > 0.02 {
+            pt.tilt_y.atan2(pt.tilt_x)
+        } else {
+            self.params.angle_deg.to_radians()
+        };
+
+        let aspect_ratio = if self.params.tilt_aspect_ratio && tilt_mag > 0.02 {
+            (1.0 - tilt_mag * 0.65).clamp(0.2, 1.0)
+        } else {
+            1.0
+        };
 
         let (mut x, mut y) = (pt.x, pt.y);
 
@@ -163,6 +196,8 @@ impl BrushEngine {
             opacity,
             hardness: self.params.hardness,
             color: self.params.color,
+            aspect_ratio,
+            angle_rad,
         }
     }
 }
@@ -194,5 +229,20 @@ mod tests {
             assert!(dab.x > 0.0 && dab.x <= 50.0);
             assert_eq!(dab.y, 0.0);
         }
+    }
+
+    #[test]
+    fn test_brush_tilt_dynamics() {
+        let mut params = BrushParameters::default();
+        params.tilt_affects_size = true;
+        params.tilt_aspect_ratio = true;
+
+        let mut engine = BrushEngine::new(params);
+
+        // Point tilted along X
+        let pt = StrokePoint::with_details(100.0, 100.0, 0.5, 0.8, 0.0, 0);
+        let dabs = engine.push_point(pt);
+        assert_eq!(dabs.len(), 1);
+        assert!(dabs[0].aspect_ratio < 0.8, "Tilted stylus must produce elliptical dab");
     }
 }

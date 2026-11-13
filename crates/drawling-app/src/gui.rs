@@ -46,12 +46,18 @@ pub struct DrawlingApp {
     pub fade_start_len: f32,
     pub fade_end_len: f32,
 
-    // Canvas settings inputs
+    // Canvas settings & viewport controls
     pub input_canvas_w: u32,
     pub input_canvas_h: u32,
     pub input_canvas_dpi: f32,
     pub canvas_zoom: f32,
     pub canvas_rotation_deg: f32,
+
+    // Color Wheel (Farbkreis) state
+    pub color_h: f32,
+    pub color_s: f32,
+    pub color_v: f32,
+    pub hex_input: String,
 
     // Brush import text
     pub import_text: String,
@@ -75,10 +81,14 @@ impl DrawlingApp {
         // Default lineart layer
         let inking_layer = editor.stack.add_layer("Lineart");
         editor.stack.active_index = inking_layer;
-        editor.set_primary_color(Color::new(0.12, 0.14, 0.18, 1.0));
+        let initial_color = Color::new(0.12, 0.14, 0.18, 1.0);
+        editor.set_primary_color(initial_color);
 
         // Use real-time stabilizer by default (IbisPaint standard)
         editor.stabilizer.set_mode(StabilizerMode::Realtime { level: 3 });
+
+        let (h, s, v) = initial_color.to_hsv();
+        let hex = initial_color.to_hex();
 
         Self {
             editor,
@@ -112,6 +122,11 @@ impl DrawlingApp {
             canvas_zoom: 1.0,
             canvas_rotation_deg: 0.0,
 
+            color_h: h,
+            color_s: s,
+            color_v: v,
+            hex_input: hex,
+
             import_text: String::new(),
             import_feedback: None,
 
@@ -123,9 +138,18 @@ impl DrawlingApp {
         }
     }
 
-    fn set_status(&mut self, msg: impl Into<String>) {
+    pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_message = msg.into();
         self.last_status_update = Instant::now();
+    }
+
+    pub fn set_app_color(&mut self, color: Color) {
+        self.editor.set_primary_color(color);
+        let (h, s, v) = color.to_hsv();
+        self.color_h = h;
+        self.color_s = s;
+        self.color_v = v;
+        self.hex_input = color.to_hex();
     }
 
     fn apply_stabilizer_settings(&mut self) {
@@ -147,14 +171,14 @@ impl eframe::App for DrawlingApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Authentic IbisPaint dark visuals styling (No emojis, sleek dark tones)
+        // Authentic clean dark studio theme (No emojis, sleek slate/charcoal styling)
         let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = Color32::from_rgb(32, 33, 38);
-        visuals.window_fill = Color32::from_rgb(36, 37, 44);
-        visuals.window_stroke = egui::Stroke::new(1.0, Color32::from_rgb(58, 60, 72));
-        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(42, 44, 52);
-        visuals.widgets.inactive.bg_fill = Color32::from_rgb(46, 48, 58);
-        visuals.widgets.hovered.bg_fill = Color32::from_rgb(58, 62, 75);
+        visuals.panel_fill = Color32::from_rgb(28, 30, 35);
+        visuals.window_fill = Color32::from_rgb(33, 35, 42);
+        visuals.window_stroke = egui::Stroke::new(1.0, Color32::from_rgb(52, 55, 66));
+        visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(38, 40, 48);
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(44, 46, 56);
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(56, 60, 74);
         visuals.widgets.active.bg_fill = Color32::from_rgb(42, 117, 215);
         visuals.selection.bg_fill = Color32::from_rgb(42, 117, 215);
         ui.ctx().set_visuals(visuals);
@@ -208,18 +232,18 @@ impl eframe::App for DrawlingApp {
 
         // 1. Obere Leiste (Top Bar)
         if !self.editor.zen_mode {
-            egui::Panel::top("ibis_top_bar").show(ui, |ui| {
-                ui.horizontal(|ui| {
+            egui::Panel::top("ibis_top_bar").default_size(42.0).show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
 
                     // Gallery Back button
-                    if ui.button("< Meine Galerie").on_hover_text("Zur Galerie wechseln").clicked() {
+                    if ui.button("< Galerie").on_hover_text("Zur Galerie wechseln").clicked() {
                         self.view = AppView::Gallery;
                     }
 
                     ui.separator();
 
-                    // Undo / Redo Buttons on Top Bar (IbisPaint layout)
+                    // Undo / Redo
                     if ui.button("Undo").on_hover_text("Rückgängig (Ctrl+Z)").clicked() {
                         self.editor.undo();
                         self.set_status("Rückgängig (Undo)");
@@ -231,67 +255,43 @@ impl eframe::App for DrawlingApp {
 
                     ui.separator();
 
-                    // Active Tool quick selector
-                    egui::ComboBox::from_id_salt("top_tool_selector")
-                        .selected_text(format!("Werkzeug: {:?}", self.editor.active_tool))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Brush, "Pinsel [B]");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Eraser, "Radierer [E]");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Smudge, "Verwischen [J]");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Bucket, "Farbeimer [G]");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Eyedropper, "Pipette [I]");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Lasso, "Lasso-Auswahl");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::MagicWand, "Zauberstab");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::QuickMask, "Schnellmaske");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::FrameDivider, "Manga Panel-Teiler");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Text, "Sprechblase / Text");
-                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Transform, "Transformieren");
-                        });
-
-                    // Layer Button on Top Bar
-                    let layer_count = self.editor.stack.layers.len();
-                    let layer_btn_text = format!("Ebenen [{}]", layer_count);
-                    if ui.selectable_label(self.show_layer_dialog, layer_btn_text).on_hover_text("Ebenen-Manager öffnen").clicked() {
-                        self.show_layer_dialog = !self.show_layer_dialog;
-                    }
-
-                    // Material-Store Button on Top Bar
-                    if ui.selectable_label(self.show_material_dialog, "Material-Store").on_hover_text("Material-Bibliothek öffnen").clicked() {
-                        self.show_material_dialog = !self.show_material_dialog;
-                    }
-
-                    // Title
-                    ui.separator();
-                    ui.strong(format!("Drawling | {}", self.editor.manifest.title));
+                    // Active Tool quick-switch text
+                    ui.strong(format!("Drawling Studio: {}", self.editor.manifest.title));
 
                     // Right-aligned items on top bar
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Export / Save
-                        if ui.button("Speichern & Export").clicked() {
+                        if ui.button("Export").on_hover_text("PNG exportieren & Projekt speichern").clicked() {
                             let _ = ImageExporter::export_png(&PathBuf::from("artwork.png"), &self.editor.stack);
                             let _ = self.editor.save_project(&PathBuf::from("artwork.drawling"));
-                            self.set_status("Projekt gespeichert & als 'artwork.png' exportiert");
+                            self.set_status("Gespeichert & als 'artwork.png' exportiert");
                         }
 
-                        // Settings / Canvas dialog button
-                        if ui.selectable_label(self.show_canvas_dialog, "Leinwand / Einstellungen").clicked() {
+                        // Canvas Settings
+                        if ui.selectable_label(self.show_canvas_dialog, "Leinwand").on_hover_text("Leinwandgröße & DPI anpassen").clicked() {
                             self.show_canvas_dialog = !self.show_canvas_dialog;
                         }
 
-                        // Stabilizer Icon Button
-                        let stab_text = format!("Stabilisator [{}]", self.stabilizer_level);
-                        if ui.selectable_label(self.show_stabilizer_dialog, stab_text).clicked() {
-                            self.show_stabilizer_dialog = !self.show_stabilizer_dialog;
+                        // Layer Button
+                        let layer_count = self.editor.stack.layers.len();
+                        let layer_btn_text = format!("Ebenen ({})", layer_count);
+                        if ui.selectable_label(self.show_layer_dialog, layer_btn_text).on_hover_text("Ebenen-Manager öffnen").clicked() {
+                            self.show_layer_dialog = !self.show_layer_dialog;
                         }
 
-                        // Filter Menu
-                        if ui.selectable_label(self.show_filter_dialog, "FX Filter").clicked() {
+                        // Material Store
+                        if ui.selectable_label(self.show_material_dialog, "Material-Store").on_hover_text("Material-Bibliothek öffnen").clicked() {
+                            self.show_material_dialog = !self.show_material_dialog;
+                        }
+
+                        // FX Filter
+                        if ui.selectable_label(self.show_filter_dialog, "FX Filter").on_hover_text("Künstlerische Filter (Rayon)").clicked() {
                             self.show_filter_dialog = !self.show_filter_dialog;
                         }
 
                         // Symmetry & Rulers Menu
                         ui.menu_button("Symmetrie & Lineale", |ui| {
-                            ui.label("Symmetrie-Hilfen:");
+                            ui.label("Symmetrie:");
                             if ui.selectable_label(self.editor.symmetry_mode == SymmetryMode::None, "Symmetrie: Aus").clicked() {
                                 self.editor.symmetry_mode = SymmetryMode::None;
                                 ui.close();
@@ -314,12 +314,12 @@ impl eframe::App for DrawlingApp {
                             }
 
                             ui.separator();
-                            ui.label("Geometrische Lineale:");
+                            ui.label("Lineale:");
                             if ui.selectable_label(self.editor.active_ruler.is_none(), "Lineal: Aus").clicked() {
                                 self.editor.active_ruler = None;
                                 ui.close();
                             }
-                            if ui.button("Geodreieck / Linear-Lineal").clicked() {
+                            if ui.button("Geodreieck / Linear").clicked() {
                                 let w = self.editor.manifest.canvas_width as f32;
                                 let h = self.editor.manifest.canvas_height as f32;
                                 self.editor.active_ruler = Some(Ruler::Linear {
@@ -350,7 +350,7 @@ impl eframe::App for DrawlingApp {
                                 });
                                 ui.close();
                             }
-                            if ui.button("Perspektivlineal (2-Punkt)").clicked() {
+                            if ui.button("Perspektive (2-Punkt)").clicked() {
                                 let w = self.editor.manifest.canvas_width as f32;
                                 let h = self.editor.manifest.canvas_height as f32;
                                 self.editor.active_ruler = Some(Ruler::Perspective {
@@ -361,7 +361,13 @@ impl eframe::App for DrawlingApp {
                             }
                         });
 
-                        // XP-Pen Tablet profile
+                        // Stabilizer Button
+                        let stab_text = format!("Stabilisator ({})", self.stabilizer_level);
+                        if ui.selectable_label(self.show_stabilizer_dialog, stab_text).on_hover_text("Glättung & Anpress-Fading").clicked() {
+                            self.show_stabilizer_dialog = !self.show_stabilizer_dialog;
+                        }
+
+                        // Tablet Profile
                         ui.menu_button(format!("Tablett: {}", self.editor.tablet_profile.manufacturer), |ui| {
                             if ui.button("XP-Pen Standard (8192 Stufen)").clicked() {
                                 self.editor.tablet_profile = TabletCalibrationProfile::xp_pen_standard();
@@ -392,149 +398,94 @@ impl eframe::App for DrawlingApp {
             });
         }
 
-        // 2. Linke Steuerleiste (Left Vertical Dock)
+        // 2. Linke Steuerleiste (Left Fixed-Width Tool Dock - Clean, No Text Wrapping!)
         if !self.editor.zen_mode {
-            egui::Panel::left("ibis_left_toolbar").default_size(58.0).show(ui, |ui| {
+            egui::Panel::left("ibis_left_toolbar").default_size(52.0).show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(4.0);
 
-                    // Transform
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Transform, "[T]").on_hover_text("Transformieren [T]").clicked() {
+                    let tool_btn = |ui: &mut egui::Ui, active: bool, text: &str, tip: &str| -> bool {
+                        let rt = egui::RichText::new(text).size(13.0).strong();
+                        let btn = egui::Button::new(rt)
+                            .selected(active)
+                            .min_size(Vec2::new(38.0, 28.0));
+                        ui.add(btn).on_hover_text(tip).clicked()
+                    };
+
+                    // Tools with clean 1-2 char identifiers that NEVER wrap
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Transform, "T", "Transformieren [Ctrl+T]") {
                         self.editor.active_tool = ActiveTool::Transform;
                     }
-                    ui.add_space(2.0);
-
-                    // Zauberstab
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::MagicWand, "[Wand]").on_hover_text("Zauberstab (Magic Wand)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::MagicWand, "W", "Zauberstab (Magic Wand) [W]") {
                         self.editor.active_tool = ActiveTool::MagicWand;
                     }
-                    ui.add_space(2.0);
-
-                    // Lasso
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Lasso, "[Lasso]").on_hover_text("Lasso-Auswahl").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Lasso, "L", "Lasso-Auswahl [L]") {
                         self.editor.active_tool = ActiveTool::Lasso;
                     }
-                    ui.add_space(2.0);
-
-                    // Schnellmaske
-                    let mask_active = self.editor.active_tool == ActiveTool::QuickMask;
-                    if ui.selectable_label(mask_active, "[Mask]").on_hover_text("Schnellmaske: Ein-/Ausblenden mit Pinsel").clicked() {
-                        if mask_active {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::QuickMask, "Q", "Schnellmaske (Quick Mask)") {
+                        if self.editor.active_tool == ActiveTool::QuickMask {
                             self.editor.active_tool = ActiveTool::Brush;
-                            self.set_status("Schnellmaske angewendet");
+                            self.set_status("Schnellmaske deaktiviert");
                         } else {
                             self.editor.active_tool = ActiveTool::QuickMask;
-                            self.set_status("Schnellmaske aktiv: Male geschützte Bereiche");
+                            self.set_status("Schnellmaske aktiv: Pinsel malt Maske");
                         }
                     }
-                    ui.add_space(2.0);
-
-                    // FX Filter
-                    if ui.selectable_label(self.show_filter_dialog, "[FX]").on_hover_text("Filter & Effekte").clicked() {
+                    if tool_btn(ui, self.show_filter_dialog, "FX", "Filter & Effekte") {
                         self.show_filter_dialog = !self.show_filter_dialog;
                     }
-                    ui.add_space(2.0);
-
-                    // Pinsel
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Brush, "[B]").on_hover_text("Pinsel (Brush)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Brush, "B", "Pinsel (Brush) [B]") {
                         self.editor.active_tool = ActiveTool::Brush;
                     }
-                    ui.add_space(2.0);
-
-                    // Radierer
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Eraser, "[E]").on_hover_text("Radierer (Eraser)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Eraser, "E", "Radierer (Eraser) [E]") {
                         self.editor.active_tool = ActiveTool::Eraser;
                     }
-                    ui.add_space(2.0);
-
-                    // Verwischen
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Smudge, "[J]").on_hover_text("Verwischen (Smudge)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Smudge, "S", "Verwischen (Smudge) [J]") {
                         self.editor.active_tool = ActiveTool::Smudge;
                     }
-                    ui.add_space(2.0);
-
-                    // Farbeimer
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Bucket, "[G]").on_hover_text("Farbeimer (Bucket Fill)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Bucket, "G", "Farbeimer (Bucket Fill) [G]") {
                         self.editor.active_tool = ActiveTool::Bucket;
                     }
-                    ui.add_space(2.0);
-
-                    // Manga Frame Divider
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::FrameDivider, "[Panel]").on_hover_text("Manga Panel-Teiler (Frame Divider)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::FrameDivider, "P", "Manga Panel-Teiler [P]") {
                         self.editor.active_tool = ActiveTool::FrameDivider;
                     }
-                    ui.add_space(2.0);
-
-                    // Text / Speech Balloon
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Text, "[Text]").on_hover_text("Text & Manga Sprechblase").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Text, "A", "Text & Sprechblase [T]") {
                         self.editor.active_tool = ActiveTool::Text;
                     }
-                    ui.add_space(2.0);
-
-                    // Formen
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Rectangle, "[Box]").on_hover_text("Rechteck").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Rectangle, "R", "Rechteck-Form [U]") {
                         self.editor.active_tool = ActiveTool::Rectangle;
                     }
-                    ui.add_space(2.0);
-
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Ellipse, "[Kreis]").on_hover_text("Ellipse / Kreis").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Ellipse, "O", "Ellipse / Kreis-Form") {
                         self.editor.active_tool = ActiveTool::Ellipse;
                     }
-                    ui.add_space(2.0);
-
-                    // Pipette
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Eyedropper, "[I]").on_hover_text("Farbpipette (Eyedropper)").clicked() {
+                    if tool_btn(ui, self.editor.active_tool == ActiveTool::Eyedropper, "I", "Farbpipette (Eyedropper) [I]") {
                         self.editor.active_tool = ActiveTool::Eyedropper;
                     }
-                    ui.add_space(6.0);
+                    if tool_btn(ui, self.show_material_dialog, "M", "Material-Store & Cloud-Bibliothek") {
+                        self.show_material_dialog = !self.show_material_dialog;
+                    }
 
+                    ui.add_space(4.0);
                     ui.separator();
                     ui.add_space(4.0);
 
-                    // Material-Store Quick Icon
-                    if ui.selectable_label(self.show_material_dialog, "[Store]").on_hover_text("Material-Store / Cloud-Bibliothek").clicked() {
-                        self.show_material_dialog = !self.show_material_dialog;
+                    // Color Swatch quick trigger on left toolbar
+                    let [cr, cg, cb, _] = self.editor.primary_color.to_rgba8();
+                    let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), egui::Sense::click());
+                    ui.painter().rect_filled(swatch_rect, 6.0, Color32::from_rgb(cr, cg, cb));
+                    ui.painter().rect_stroke(swatch_rect, 6.0, egui::Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Outside);
+                    if swatch_resp.on_hover_text("Farbkreis & Palette öffnen").clicked() {
+                        self.show_color_dialog = !self.show_color_dialog;
                     }
                 });
             });
         }
 
-        // 3. Rechte Steuerleiste (Right Quick-Adjustment Dock)
+        // 3. Untere Werkzeugleiste (Bottom Dock - Clean, All Controls in One Row)
         if !self.editor.zen_mode {
-            egui::Panel::right("ibis_right_toolbar").default_size(70.0).show(ui, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(6.0);
-                    ui.small("Größe");
-                    let params = self.editor.brush_engine.params_mut();
-                    ui.add(egui::Slider::new(&mut params.size, 0.5..=500.0).vertical().show_value(false).logarithmic(true));
-                    ui.small(format!("{:.0}px", params.size));
-
-                    ui.separator();
-                    ui.small("Deckkr.");
-                    let mut op_percent = (params.opacity * 100.0).round();
-                    if ui.add(egui::Slider::new(&mut op_percent, 1.0..=100.0).vertical().show_value(false)).changed() {
-                        params.opacity = op_percent / 100.0;
-                    }
-                    ui.small(format!("{}%", op_percent as u32));
-
-                    ui.separator();
-                    ui.small("Zoom");
-                    ui.add(egui::Slider::new(&mut self.canvas_zoom, 0.1..=5.0).vertical().show_value(false));
-                    ui.small(format!("{:.0}%", self.canvas_zoom * 100.0));
-
-                    ui.separator();
-                    ui.small("Drehung");
-                    ui.add(egui::Slider::new(&mut self.canvas_rotation_deg, -180.0..=180.0).vertical().show_value(false));
-                    ui.small(format!("{:.0}°", self.canvas_rotation_deg));
-                });
-            });
-        }
-
-        // 4. Untere Werkzeugleiste (Bottom Dock)
-        if !self.editor.zen_mode {
-            egui::Panel::bottom("ibis_bottom_bar").show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+            egui::Panel::bottom("ibis_bottom_bar").default_size(44.0).show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
 
                     // Quick Toggle between Brush and Eraser
                     let is_brush = self.editor.active_tool == ActiveTool::Brush;
@@ -550,7 +501,7 @@ impl eframe::App for DrawlingApp {
 
                     ui.separator();
 
-                    // Brush preview circle button (opens Pinsel Dialog)
+                    // Brush Preset Pill Button
                     let current_size = self.editor.brush_engine.params().size;
                     let brush_btn_text = format!("Pinsel: {:.1}px", current_size);
                     if ui.selectable_label(self.show_brush_dialog, brush_btn_text)
@@ -559,17 +510,12 @@ impl eframe::App for DrawlingApp {
                         self.show_brush_dialog = !self.show_brush_dialog;
                     }
 
-                    // Color Preview Swatch (opens Color Picker)
-                    let color = self.editor.primary_color;
-                    let c32 = Color32::from_rgb(
-                        (color.r * 255.0) as u8,
-                        (color.g * 255.0) as u8,
-                        (color.b * 255.0) as u8,
-                    );
-                    let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(26.0, 26.0), egui::Sense::click());
-                    ui.painter().rect_filled(swatch_rect, 4.0, c32);
-                    ui.painter().rect_stroke(swatch_rect, 4.0, egui::Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Outside);
-                    if swatch_resp.clicked() {
+                    // Color Preview Swatch (opens Farbkreis Dialog)
+                    let [cr, cg, cb, _] = self.editor.primary_color.to_rgba8();
+                    let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(30.0, 26.0), egui::Sense::click());
+                    ui.painter().rect_filled(swatch_rect, 4.0, Color32::from_rgb(cr, cg, cb));
+                    ui.painter().rect_stroke(swatch_rect, 4.0, egui::Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Outside);
+                    if swatch_resp.on_hover_text("Farbkreis & Farbton-Auswahl öffnen").clicked() {
                         self.show_color_dialog = !self.show_color_dialog;
                     }
 
@@ -577,6 +523,7 @@ impl eframe::App for DrawlingApp {
                     ui.label("Größe:");
                     let params = self.editor.brush_engine.params_mut();
                     ui.add(egui::Slider::new(&mut params.size, 0.5..=500.0).show_value(false).logarithmic(true));
+                    ui.small(format!("{:.1}px", params.size));
 
                     // Quick Opacity Slider
                     ui.label("Deckkraft:");
@@ -584,17 +531,21 @@ impl eframe::App for DrawlingApp {
                     if ui.add(egui::Slider::new(&mut op_percent, 1.0..=100.0).show_value(false)).changed() {
                         params.opacity = op_percent / 100.0;
                     }
-                    ui.label(format!("{}%", op_percent as u32));
+                    ui.small(format!("{}%", op_percent as u32));
 
                     ui.separator();
 
-                    // Layers Button with Count Indicator
-                    let layer_count = self.editor.stack.layers.len();
-                    let layer_btn_text = format!("Ebenen [{}]", layer_count);
-                    if ui.selectable_label(self.show_layer_dialog, layer_btn_text)
-                        .on_hover_text("Ebenen-Manager öffnen").clicked()
-                    {
-                        self.show_layer_dialog = !self.show_layer_dialog;
+                    // Viewport Zoom Controls
+                    ui.label("Zoom:");
+                    if ui.small_button("-").on_hover_text("Verkleinern").clicked() {
+                        self.canvas_zoom = (self.canvas_zoom * 0.85).max(0.1);
+                    }
+                    ui.small(format!("{:.0}%", self.canvas_zoom * 100.0));
+                    if ui.small_button("+").on_hover_text("Vergrößern").clicked() {
+                        self.canvas_zoom = (self.canvas_zoom * 1.18).min(5.0);
+                    }
+                    if ui.small_button("1:1").on_hover_text("Zoom zurücksetzen").clicked() {
+                        self.canvas_zoom = 1.0;
                     }
 
                     // Status Bar Indicator
@@ -615,7 +566,7 @@ impl eframe::App for DrawlingApp {
         self.render_filter_dialog(ui);
         self.render_material_dialog(ui);
 
-        // Central Drawing Canvas
+        // Central Drawing Canvas (Full screen, no cramped side panels)
         egui::CentralPanel::default().show(ui, |ui| {
             let available_size = ui.available_size();
             let canvas_w = self.editor.manifest.canvas_width;
@@ -1025,40 +976,193 @@ impl DrawlingApp {
         self.show_canvas_dialog = open;
     }
 
-    /// Renders Color Picker & Palette Dialog
+    /// Renders IbisPaint Authentic Color Wheel Dialog ("Farbkreis & Palette mit allen Tönen")
     fn render_color_dialog(&mut self, ui: &mut egui::Ui) {
         if !self.show_color_dialog {
             return;
         }
 
         let mut open = self.show_color_dialog;
-        egui::Window::new("Farbe & Palette")
+        egui::Window::new("Farbkreis & Palette")
             .open(&mut open)
-            .default_size([300.0, 360.0])
+            .default_size([320.0, 520.0])
             .resizable(false)
             .show(ui.ctx(), |ui| {
-                let mut rgba = [
-                    self.editor.primary_color.r,
-                    self.editor.primary_color.g,
-                    self.editor.primary_color.b,
-                ];
-                if ui.color_edit_button_rgb(&mut rgba).changed() {
-                    self.editor.set_primary_color(Color::new(rgba[0], rgba[1], rgba[2], 1.0));
+                ui.vertical_centered(|ui| {
+                    // Farbkreis (HSV Color Wheel) Canvas Widget
+                    let wheel_size = Vec2::new(220.0, 220.0);
+                    let (wheel_rect, wheel_resp) = ui.allocate_exact_size(wheel_size, egui::Sense::drag());
+                    let painter = ui.painter_at(wheel_rect);
+                    let center = wheel_rect.center();
+
+                    let r_mid = 85.0f32;
+                    let stroke_w = 20.0f32;
+                    let inner_r = r_mid - stroke_w * 0.5; // 75.0
+                    let outer_r = r_mid + stroke_w * 0.5; // 95.0
+
+                    // 1. Draw 72 segments for the smooth Hue Ring (All hues across 360 degrees)
+                    let segments = 72;
+                    for i in 0..segments {
+                        let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
+                        let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
+                        let h = (i as f32 / segments as f32) * 360.0;
+                        let col = Color::from_hsv(h, 1.0, 1.0, 1.0);
+                        let [r, g, b, _] = col.to_rgba8();
+                        let c32 = Color32::from_rgb(r, g, b);
+
+                        let p0 = center + Vec2::new(a0.cos(), a0.sin()) * r_mid;
+                        let p1 = center + Vec2::new(a1.cos(), a1.sin()) * r_mid;
+                        painter.line_segment([p0, p1], egui::Stroke::new(stroke_w + 1.0, c32));
+                    }
+
+                    // Ring borders for clean finish
+                    painter.circle_stroke(center, outer_r + 0.5, egui::Stroke::new(1.0, Color32::from_rgb(60, 62, 70)));
+                    painter.circle_stroke(center, inner_r - 0.5, egui::Stroke::new(1.0, Color32::from_rgb(60, 62, 70)));
+
+                    // 2. Draw Saturation-Value 2D gradient box in the center
+                    let sv_size = 96.0f32;
+                    let sv_rect = egui::Rect::from_center_size(center, Vec2::new(sv_size, sv_size));
+
+                    let grid = 8;
+                    for iy in 0..grid {
+                        let v0 = 1.0 - (iy as f32 / grid as f32);
+                        let v1 = 1.0 - ((iy + 1) as f32 / grid as f32);
+                        let y0 = sv_rect.min.y + (iy as f32 / grid as f32) * sv_size;
+                        let y1 = sv_rect.min.y + ((iy + 1) as f32 / grid as f32) * sv_size;
+
+                        for ix in 0..grid {
+                            let s0 = ix as f32 / grid as f32;
+                            let s1 = (ix + 1) as f32 / grid as f32;
+                            let x0 = sv_rect.min.x + (ix as f32 / grid as f32) * sv_size;
+                            let x1 = sv_rect.min.x + ((ix + 1) as f32 / grid as f32) * sv_size;
+
+                            let c_tl = Color::from_hsv(self.color_h, s0, v0, 1.0).to_rgba8();
+                            let c_tr = Color::from_hsv(self.color_h, s1, v0, 1.0).to_rgba8();
+                            let c_br = Color::from_hsv(self.color_h, s1, v1, 1.0).to_rgba8();
+                            let c_bl = Color::from_hsv(self.color_h, s0, v1, 1.0).to_rgba8();
+
+                            let mut mesh = egui::Mesh::default();
+                            let idx = mesh.vertices.len() as u32;
+                            mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x0, y0), uv: egui::pos2(0.0, 0.0), color: Color32::from_rgb(c_tl[0], c_tl[1], c_tl[2]) });
+                            mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x1, y0), uv: egui::pos2(1.0, 0.0), color: Color32::from_rgb(c_tr[0], c_tr[1], c_tr[2]) });
+                            mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x1, y1), uv: egui::pos2(1.0, 1.0), color: Color32::from_rgb(c_br[0], c_br[1], c_br[2]) });
+                            mesh.vertices.push(egui::epaint::Vertex { pos: egui::pos2(x0, y1), uv: egui::pos2(0.0, 1.0), color: Color32::from_rgb(c_bl[0], c_bl[1], c_bl[2]) });
+                            mesh.add_triangle(idx, idx + 1, idx + 2);
+                            mesh.add_triangle(idx, idx + 2, idx + 3);
+                            painter.add(egui::Shape::mesh(mesh));
+                        }
+                    }
+                    painter.rect_stroke(sv_rect, 0.0, egui::Stroke::new(1.0, Color32::from_rgb(80, 84, 96)), egui::StrokeKind::Outside);
+
+                    // 3. User interaction with Farbkreis
+                    if let Some(pos) = wheel_resp.interact_pointer_pos() {
+                        let d = pos - center;
+                        let dist = d.length();
+                        if dist >= inner_r - 8.0 && dist <= outer_r + 12.0 {
+                            // Dragging Hue Ring
+                            let mut angle = d.y.atan2(d.x).to_degrees();
+                            if angle < 0.0 { angle += 360.0; }
+                            self.color_h = angle;
+                            let new_col = Color::from_hsv(self.color_h, self.color_s, self.color_v, self.editor.primary_color.a);
+                            self.editor.set_primary_color(new_col);
+                            self.hex_input = new_col.to_hex();
+                        } else if sv_rect.contains(pos) || dist < inner_r {
+                            // Dragging SV Box
+                            let s = ((pos.x - sv_rect.min.x) / sv_size).clamp(0.0, 1.0);
+                            let v = ((sv_rect.max.y - pos.y) / sv_size).clamp(0.0, 1.0);
+                            self.color_s = s;
+                            self.color_v = v;
+                            let new_col = Color::from_hsv(self.color_h, self.color_s, self.color_v, self.editor.primary_color.a);
+                            self.editor.set_primary_color(new_col);
+                            self.hex_input = new_col.to_hex();
+                        }
+                    }
+
+                    // 4. Indicator on Hue Ring
+                    let h_rad = self.color_h.to_radians();
+                    let h_handle_pos = center + Vec2::new(h_rad.cos(), h_rad.sin()) * r_mid;
+                    let pure_hue = Color::from_hsv(self.color_h, 1.0, 1.0, 1.0).to_rgba8();
+                    painter.circle_filled(h_handle_pos, 7.0, Color32::WHITE);
+                    painter.circle_filled(h_handle_pos, 5.0, Color32::from_rgb(pure_hue[0], pure_hue[1], pure_hue[2]));
+                    painter.circle_stroke(h_handle_pos, 7.0, egui::Stroke::new(1.5, Color32::BLACK));
+
+                    // 5. Indicator in SV Box
+                    let sv_handle_pos = egui::pos2(
+                        sv_rect.min.x + self.color_s * sv_size,
+                        sv_rect.max.y - self.color_v * sv_size,
+                    );
+                    let [cr, cg, cb, _] = self.editor.primary_color.to_rgba8();
+                    let cur_c32 = Color32::from_rgb(cr, cg, cb);
+                    painter.circle_filled(sv_handle_pos, 5.0, cur_c32);
+                    painter.circle_stroke(sv_handle_pos, 5.0, egui::Stroke::new(1.5, Color32::WHITE));
+                    painter.circle_stroke(sv_handle_pos, 6.5, egui::Stroke::new(1.0, Color32::BLACK));
+                });
+
+                ui.add_space(8.0);
+                ui.separator();
+
+                // Swatch preview & HEX
+                ui.horizontal(|ui| {
+                    let [r, g, b, _] = self.editor.primary_color.to_rgba8();
+                    let c32 = Color32::from_rgb(r, g, b);
+                    let (swatch_rect, _) = ui.allocate_exact_size(Vec2::new(48.0, 24.0), egui::Sense::hover());
+                    ui.painter().rect_filled(swatch_rect, 4.0, c32);
+                    ui.painter().rect_stroke(swatch_rect, 4.0, egui::Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Outside);
+
+                    ui.label("Hex:");
+                    let hex_resp = ui.add(egui::TextEdit::singleline(&mut self.hex_input).desired_width(90.0));
+                    if hex_resp.lost_focus() || hex_resp.changed() {
+                        if let Some(c) = Color::from_hex(&self.hex_input) {
+                            self.editor.set_primary_color(c);
+                            let (h, s, v) = c.to_hsv();
+                            self.color_h = h;
+                            self.color_s = s;
+                            self.color_v = v;
+                        }
+                    }
+                });
+
+                ui.add_space(4.0);
+
+                // Sliders for H, S, V fine tuning
+                let mut changed = false;
+                ui.horizontal(|ui| {
+                    ui.label("Farbton (H):");
+                    changed |= ui.add(egui::Slider::new(&mut self.color_h, 0.0..=360.0).suffix("°")).changed();
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Sättigung (S):");
+                    let mut s_percent = self.color_s * 100.0;
+                    if ui.add(egui::Slider::new(&mut s_percent, 0.0..=100.0).suffix("%")).changed() {
+                        self.color_s = s_percent / 100.0;
+                        changed = true;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Helligkeit (V):");
+                    let mut v_percent = self.color_v * 100.0;
+                    if ui.add(egui::Slider::new(&mut v_percent, 0.0..=100.0).suffix("%")).changed() {
+                        self.color_v = v_percent / 100.0;
+                        changed = true;
+                    }
+                });
+
+                if changed {
+                    let new_col = Color::from_hsv(self.color_h, self.color_s, self.color_v, self.editor.primary_color.a);
+                    self.editor.set_primary_color(new_col);
+                    self.hex_input = new_col.to_hex();
                 }
 
                 ui.separator();
-                ui.label(format!("Aktive Palette: {}", self.editor.active_palette.name));
-
+                ui.label("Farbtöne der aktiven Palette:");
                 let mut picked_color = None;
                 ui.horizontal_wrapped(|ui| {
                     for color in &self.editor.active_palette.colors {
-                        let c32 = Color32::from_rgb(
-                            (color.r * 255.0) as u8,
-                            (color.g * 255.0) as u8,
-                            (color.b * 255.0) as u8,
-                        );
-                        let (rect, resp) = ui.allocate_exact_size(Vec2::new(28.0, 28.0), egui::Sense::click());
-                        ui.painter().rect_filled(rect, 4.0, c32);
+                        let [pr, pg, pb, _] = color.to_rgba8();
+                        let pc32 = Color32::from_rgb(pr, pg, pb);
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::new(24.0, 24.0), egui::Sense::click());
+                        ui.painter().rect_filled(rect, 3.0, pc32);
+                        ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(1.0, Color32::from_rgb(80, 84, 96)), egui::StrokeKind::Outside);
                         if resp.clicked() {
                             picked_color = Some(*color);
                         }
@@ -1066,13 +1170,13 @@ impl DrawlingApp {
                 });
 
                 if let Some(c) = picked_color {
-                    self.editor.set_primary_color(c);
+                    self.set_app_color(c);
                 }
             });
         self.show_color_dialog = open;
     }
 
-    /// Renders Artistic Filter Dialog (Over 80 image manipulation filter effects)
+    /// Renders Artistic Filter Dialog
     fn render_filter_dialog(&mut self, ui: &mut egui::Ui) {
         if !self.show_filter_dialog {
             return;
@@ -1114,7 +1218,7 @@ impl DrawlingApp {
         self.show_filter_dialog = open;
     }
 
-    /// Renders Material Store Dialog (Hintergründe, Muster, 3D-Körpermodelle, Texturen, Stempel)
+    /// Renders Material Store Dialog
     fn render_material_dialog(&mut self, ui: &mut egui::Ui) {
         if !self.show_material_dialog {
             return;

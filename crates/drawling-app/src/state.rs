@@ -2,7 +2,7 @@
 use chrono::Utc;
 use drawling_core::*;
 use drawling_render::{CanvasCompositor, CanvasViewport};
-use drawling_storage::{DrawlingArchive, DrawlingManifest, LayerMetadata};
+use drawling_storage::{DrawlingArchive, DrawlingManifest, LayerMetadata, TimelapseRecorder};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -19,6 +19,9 @@ pub enum ActiveTool {
     Star,
     Lasso,
     MagicWand,
+    QuickMask,
+    FrameDivider,
+    Text,
     RectSelect,
     EllipseSelect,
     Transform,
@@ -83,6 +86,11 @@ pub struct EditorState {
     pub current_stroke_before_pixels: Option<Vec<u8>>,
     pub lasso_points: Vec<(f32, f32)>,
     pub file_path: Option<PathBuf>,
+    pub quick_mask_enabled: bool,
+    pub timelapser: TimelapseRecorder,
+    pub frame_divider: FrameDivider,
+    pub text_options: TextToolOptions,
+    pub active_ruler: Option<Ruler>,
 }
 
 impl EditorState {
@@ -167,6 +175,11 @@ impl EditorState {
             current_stroke_before_pixels: None,
             lasso_points: Vec::new(),
             file_path: None,
+            quick_mask_enabled: false,
+            timelapser: TimelapseRecorder::new(),
+            frame_divider: FrameDivider::default(),
+            text_options: TextToolOptions::default(),
+            active_ruler: None,
         }
     }
 
@@ -323,6 +336,16 @@ impl EditorState {
                 }
             }
 
+            ActiveTool::QuickMask => {
+                self.is_drawing = true;
+                let r = (self.brush_engine.params().size * 0.5).max(1.0);
+                self.selection_mask.paint_brush_dab(cx, cy, r, 255);
+            }
+
+            ActiveTool::FrameDivider | ActiveTool::Text => {
+                self.is_drawing = true;
+            }
+
             _ => {}
         }
     }
@@ -360,6 +383,12 @@ impl EditorState {
             return;
         }
 
+        let (cx, cy) = if let Some(ruler) = &self.active_ruler {
+            ruler.snap((cx, cy))
+        } else {
+            (cx, cy)
+        };
+
         self.stylus_tilt = (tilt_x, tilt_y);
         let pressure = self.tablet_profile.pressure_curve.map(raw_pressure);
 
@@ -375,6 +404,10 @@ impl EditorState {
                 if let Some(stab_pt) = self.stabilizer.push(raw_pt) {
                     self.render_stroke_point(stab_pt);
                 }
+            }
+            ActiveTool::QuickMask => {
+                let r = (self.brush_engine.params().size * 0.5).max(1.0);
+                self.selection_mask.paint_brush_dab(cx, cy, r, 255);
             }
             ActiveTool::Smudge => {
                 if let Some((px, py)) = self.last_canvas_pos {
@@ -532,6 +565,41 @@ impl EditorState {
                 self.lasso_points.clear();
             }
 
+            ActiveTool::QuickMask => {
+                self.is_drawing = false;
+            }
+
+            ActiveTool::FrameDivider => {
+                if let Some(layer) = self.stack.active_layer_mut() {
+                    let panels = self.frame_divider.generate_grid(
+                        self.manifest.canvas_width,
+                        self.manifest.canvas_height,
+                        2,
+                        2,
+                    );
+                    self.frame_divider.draw_panels_on_layer(layer, &panels);
+                }
+                self.commit_layer_undo();
+            }
+
+            ActiveTool::Text => {
+                if let Some(layer) = self.stack.active_layer_mut() {
+                    let (x0, y0) = self.stroke_start_canvas.unwrap_or((150.0, 150.0));
+                    SpeechBalloon::draw(
+                        layer,
+                        SpeechBalloonKind::Oval,
+                        x0,
+                        y0,
+                        80.0,
+                        50.0,
+                        Color::WHITE,
+                        Color::BLACK,
+                        3.0,
+                    );
+                }
+                self.commit_layer_undo();
+            }
+
             _ => {}
         }
 
@@ -551,6 +619,12 @@ impl EditorState {
             });
         }
         self.compositor.update_composite(&self.stack);
+        let pixels = self.compositor.composite_buffer();
+        self.timelapser.record_stroke_snapshot(
+            self.manifest.canvas_width,
+            self.manifest.canvas_height,
+            &pixels,
+        );
     }
 
     fn render_stroke_point(&mut self, pt: StrokePoint) {

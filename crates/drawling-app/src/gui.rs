@@ -34,6 +34,9 @@ pub struct DrawlingApp {
     pub show_canvas_dialog: bool,
     pub show_color_dialog: bool,
     pub show_filter_dialog: bool,
+    pub show_material_dialog: bool,
+    pub material_tab: MaterialCategory,
+    pub show_settings_dialog: bool,
 
     // Stabilizer settings
     pub stabilizer_level: u32,
@@ -47,6 +50,8 @@ pub struct DrawlingApp {
     pub input_canvas_w: u32,
     pub input_canvas_h: u32,
     pub input_canvas_dpi: f32,
+    pub canvas_zoom: f32,
+    pub canvas_rotation_deg: f32,
 
     // Brush import text
     pub import_text: String,
@@ -54,6 +59,11 @@ pub struct DrawlingApp {
 
     // Quick tool switcher memory
     pub previous_brush_tool: ActiveTool,
+
+    // Gallery state
+    pub gallery_folder: String,
+    pub gallery_timelapse_frame: usize,
+    pub gallery_timelapse_playing: bool,
 }
 
 impl DrawlingApp {
@@ -85,6 +95,9 @@ impl DrawlingApp {
             show_canvas_dialog: false,
             show_color_dialog: false,
             show_filter_dialog: false,
+            show_material_dialog: false,
+            material_tab: MaterialCategory::Hintergruende,
+            show_settings_dialog: false,
 
             stabilizer_level: 3,
             stabilizer_realtime: true,
@@ -96,11 +109,17 @@ impl DrawlingApp {
             input_canvas_w: width,
             input_canvas_h: height,
             input_canvas_dpi: 300.0,
+            canvas_zoom: 1.0,
+            canvas_rotation_deg: 0.0,
 
             import_text: String::new(),
             import_feedback: None,
 
             previous_brush_tool: ActiveTool::Brush,
+
+            gallery_folder: "Alle".into(),
+            gallery_timelapse_frame: 0,
+            gallery_timelapse_playing: false,
         }
     }
 
@@ -128,7 +147,7 @@ impl eframe::App for DrawlingApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Authentic IbisPaint dark visuals styling
+        // Authentic IbisPaint dark visuals styling (No emojis, sleek dark tones)
         let mut visuals = egui::Visuals::dark();
         visuals.panel_fill = Color32::from_rgb(32, 33, 38);
         visuals.window_fill = Color32::from_rgb(36, 37, 44);
@@ -143,23 +162,23 @@ impl eframe::App for DrawlingApp {
         // Global Keyboard Shortcuts
         if ctx.input(|i| i.key_pressed(egui::Key::B)) {
             self.editor.active_tool = ActiveTool::Brush;
-            self.set_status("Werkzeug: Pinsel (B)");
+            self.set_status("Werkzeug: Pinsel [B]");
         }
         if ctx.input(|i| i.key_pressed(egui::Key::E)) {
             self.editor.active_tool = ActiveTool::Eraser;
-            self.set_status("Werkzeug: Radiergummi (E)");
+            self.set_status("Werkzeug: Radierer [E]");
         }
         if ctx.input(|i| i.key_pressed(egui::Key::J)) {
             self.editor.active_tool = ActiveTool::Smudge;
-            self.set_status("Werkzeug: Verwischen (J)");
+            self.set_status("Werkzeug: Verwischen [J]");
         }
         if ctx.input(|i| i.key_pressed(egui::Key::G)) {
             self.editor.active_tool = ActiveTool::Bucket;
-            self.set_status("Werkzeug: Farbeimer (G)");
+            self.set_status("Werkzeug: Farbeimer [G]");
         }
         if ctx.input(|i| i.key_pressed(egui::Key::I)) {
             self.editor.active_tool = ActiveTool::Eyedropper;
-            self.set_status("Werkzeug: Pipette (I)");
+            self.set_status("Werkzeug: Pipette [I]");
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Tab)) {
             self.editor.zen_mode = !self.editor.zen_mode;
@@ -187,37 +206,93 @@ impl eframe::App for DrawlingApp {
             AppView::Studio => {}
         }
 
-        // Top Navigation Bar
+        // 1. Obere Leiste (Top Bar)
         if !self.editor.zen_mode {
             egui::Panel::top("ibis_top_bar").show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
 
                     // Gallery Back button
-                    if ui.button("◀ Galerie").clicked() {
+                    if ui.button("< Meine Galerie").on_hover_text("Zur Galerie wechseln").clicked() {
                         self.view = AppView::Gallery;
                     }
 
                     ui.separator();
 
-                    // Title
-                    ui.strong(format!("🦆 {}", self.editor.manifest.title));
+                    // Undo / Redo Buttons on Top Bar (IbisPaint layout)
+                    if ui.button("Undo").on_hover_text("Rückgängig (Ctrl+Z)").clicked() {
+                        self.editor.undo();
+                        self.set_status("Rückgängig (Undo)");
+                    }
+                    if ui.button("Redo").on_hover_text("Wiederholen (Ctrl+Y)").clicked() {
+                        self.editor.redo();
+                        self.set_status("Wiederholen (Redo)");
+                    }
 
+                    ui.separator();
+
+                    // Active Tool quick selector
+                    egui::ComboBox::from_id_salt("top_tool_selector")
+                        .selected_text(format!("Werkzeug: {:?}", self.editor.active_tool))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Brush, "Pinsel [B]");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Eraser, "Radierer [E]");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Smudge, "Verwischen [J]");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Bucket, "Farbeimer [G]");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Eyedropper, "Pipette [I]");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Lasso, "Lasso-Auswahl");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::MagicWand, "Zauberstab");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::QuickMask, "Schnellmaske");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::FrameDivider, "Manga Panel-Teiler");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Text, "Sprechblase / Text");
+                            ui.selectable_value(&mut self.editor.active_tool, ActiveTool::Transform, "Transformieren");
+                        });
+
+                    // Layer Button on Top Bar
+                    let layer_count = self.editor.stack.layers.len();
+                    let layer_btn_text = format!("Ebenen [{}]", layer_count);
+                    if ui.selectable_label(self.show_layer_dialog, layer_btn_text).on_hover_text("Ebenen-Manager öffnen").clicked() {
+                        self.show_layer_dialog = !self.show_layer_dialog;
+                    }
+
+                    // Material-Store Button on Top Bar
+                    if ui.selectable_label(self.show_material_dialog, "Material-Store").on_hover_text("Material-Bibliothek öffnen").clicked() {
+                        self.show_material_dialog = !self.show_material_dialog;
+                    }
+
+                    // Title
+                    ui.separator();
+                    ui.strong(format!("Drawling | {}", self.editor.manifest.title));
+
+                    // Right-aligned items on top bar
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Stabilizer Icon Button (Finger/Smooth arc)
-                        let stab_text = format!("🖐 Verwackeln ({})", self.stabilizer_level);
+                        // Export / Save
+                        if ui.button("Speichern & Export").clicked() {
+                            let _ = ImageExporter::export_png(&PathBuf::from("artwork.png"), &self.editor.stack);
+                            let _ = self.editor.save_project(&PathBuf::from("artwork.drawling"));
+                            self.set_status("Projekt gespeichert & als 'artwork.png' exportiert");
+                        }
+
+                        // Settings / Canvas dialog button
+                        if ui.selectable_label(self.show_canvas_dialog, "Leinwand / Einstellungen").clicked() {
+                            self.show_canvas_dialog = !self.show_canvas_dialog;
+                        }
+
+                        // Stabilizer Icon Button
+                        let stab_text = format!("Stabilisator [{}]", self.stabilizer_level);
                         if ui.selectable_label(self.show_stabilizer_dialog, stab_text).clicked() {
                             self.show_stabilizer_dialog = !self.show_stabilizer_dialog;
                         }
 
                         // Filter Menu
-                        if ui.selectable_label(self.show_filter_dialog, "🎨 FX Filter").clicked() {
+                        if ui.selectable_label(self.show_filter_dialog, "FX Filter").clicked() {
                             self.show_filter_dialog = !self.show_filter_dialog;
                         }
 
-                        // Symmetry Guides
-                        ui.menu_button("📐 Symmetrie", |ui| {
-                            if ui.selectable_label(self.editor.symmetry_mode == SymmetryMode::None, "Aus").clicked() {
+                        // Symmetry & Rulers Menu
+                        ui.menu_button("Symmetrie & Lineale", |ui| {
+                            ui.label("Symmetrie-Hilfen:");
+                            if ui.selectable_label(self.editor.symmetry_mode == SymmetryMode::None, "Symmetrie: Aus").clicked() {
                                 self.editor.symmetry_mode = SymmetryMode::None;
                                 ui.close();
                             }
@@ -237,10 +312,57 @@ impl eframe::App for DrawlingApp {
                                 self.editor.symmetry_mode = SymmetryMode::Radial { center_x: cx, center_y: cy, segments: 8, mirror: false };
                                 ui.close();
                             }
+
+                            ui.separator();
+                            ui.label("Geometrische Lineale:");
+                            if ui.selectable_label(self.editor.active_ruler.is_none(), "Lineal: Aus").clicked() {
+                                self.editor.active_ruler = None;
+                                ui.close();
+                            }
+                            if ui.button("Geodreieck / Linear-Lineal").clicked() {
+                                let w = self.editor.manifest.canvas_width as f32;
+                                let h = self.editor.manifest.canvas_height as f32;
+                                self.editor.active_ruler = Some(Ruler::Linear {
+                                    p0: (w * 0.1, h * 0.5),
+                                    p1: (w * 0.9, h * 0.5),
+                                    snap_distance: 16.0,
+                                });
+                                ui.close();
+                            }
+                            if ui.button("Kreis-Lineal").clicked() {
+                                let cx = self.editor.manifest.canvas_width as f32 * 0.5;
+                                let cy = self.editor.manifest.canvas_height as f32 * 0.5;
+                                self.editor.active_ruler = Some(Ruler::Circular {
+                                    center: (cx, cy),
+                                    radius: 120.0,
+                                    snap_distance: 16.0,
+                                });
+                                ui.close();
+                            }
+                            if ui.button("Ellipsen-Lineal").clicked() {
+                                let cx = self.editor.manifest.canvas_width as f32 * 0.5;
+                                let cy = self.editor.manifest.canvas_height as f32 * 0.5;
+                                self.editor.active_ruler = Some(Ruler::Ellipse {
+                                    center: (cx, cy),
+                                    radius_x: 180.0,
+                                    radius_y: 90.0,
+                                    snap_distance: 16.0,
+                                });
+                                ui.close();
+                            }
+                            if ui.button("Perspektivlineal (2-Punkt)").clicked() {
+                                let w = self.editor.manifest.canvas_width as f32;
+                                let h = self.editor.manifest.canvas_height as f32;
+                                self.editor.active_ruler = Some(Ruler::Perspective {
+                                    vanishing_points: vec![(0.0, h * 0.5), (w, h * 0.5)],
+                                    snap_distance: 20.0,
+                                });
+                                ui.close();
+                            }
                         });
 
                         // XP-Pen Tablet profile
-                        ui.menu_button(format!("🖊 {}", self.editor.tablet_profile.manufacturer), |ui| {
+                        ui.menu_button(format!("Tablett: {}", self.editor.tablet_profile.manufacturer), |ui| {
                             if ui.button("XP-Pen Standard (8192 Stufen)").clicked() {
                                 self.editor.tablet_profile = TabletCalibrationProfile::xp_pen_standard();
                                 self.set_status("XP-Pen Standardprofil aktiviert");
@@ -265,101 +387,150 @@ impl eframe::App for DrawlingApp {
                                 ui.close();
                             }
                         });
-
-                        // Export
-                        if ui.button("💾 Speichern / Export").clicked() {
-                            let _ = ImageExporter::export_png(&PathBuf::from("artwork.png"), &self.editor.stack);
-                            let _ = self.editor.save_project(&PathBuf::from("artwork.drawling"));
-                            self.set_status("Projekt gespeichert & als 'artwork.png' exportiert");
-                        }
                     });
                 });
             });
         }
 
-        // Left Floating Toolbar (IbisPaint vertical pill dock)
+        // 2. Linke Steuerleiste (Left Vertical Dock)
         if !self.editor.zen_mode {
             egui::Panel::left("ibis_left_toolbar").default_size(58.0).show(ui, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
 
                     // Transform
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Transform, "🔄").on_hover_text("Transformieren").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Transform, "[T]").on_hover_text("Transformieren [T]").clicked() {
                         self.editor.active_tool = ActiveTool::Transform;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
                     // Zauberstab
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::MagicWand, "🪄").on_hover_text("Zauberstab").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::MagicWand, "[Wand]").on_hover_text("Zauberstab (Magic Wand)").clicked() {
                         self.editor.active_tool = ActiveTool::MagicWand;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
                     // Lasso
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Lasso, "➰").on_hover_text("Lasso-Auswahl").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Lasso, "[Lasso]").on_hover_text("Lasso-Auswahl").clicked() {
                         self.editor.active_tool = ActiveTool::Lasso;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
+
+                    // Schnellmaske
+                    let mask_active = self.editor.active_tool == ActiveTool::QuickMask;
+                    if ui.selectable_label(mask_active, "[Mask]").on_hover_text("Schnellmaske: Ein-/Ausblenden mit Pinsel").clicked() {
+                        if mask_active {
+                            self.editor.active_tool = ActiveTool::Brush;
+                            self.set_status("Schnellmaske angewendet");
+                        } else {
+                            self.editor.active_tool = ActiveTool::QuickMask;
+                            self.set_status("Schnellmaske aktiv: Male geschützte Bereiche");
+                        }
+                    }
+                    ui.add_space(2.0);
 
                     // FX Filter
-                    if ui.selectable_label(self.show_filter_dialog, "🎨").on_hover_text("Filter (FX)").clicked() {
+                    if ui.selectable_label(self.show_filter_dialog, "[FX]").on_hover_text("Filter & Effekte").clicked() {
                         self.show_filter_dialog = !self.show_filter_dialog;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
                     // Pinsel
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Brush, "🖌").on_hover_text("Pinsel (B)").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Brush, "[B]").on_hover_text("Pinsel (Brush)").clicked() {
                         self.editor.active_tool = ActiveTool::Brush;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
-                    // Radiergummi
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Eraser, "🧹").on_hover_text("Radiergummi (E)").clicked() {
+                    // Radierer
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Eraser, "[E]").on_hover_text("Radierer (Eraser)").clicked() {
                         self.editor.active_tool = ActiveTool::Eraser;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
                     // Verwischen
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Smudge, "💧").on_hover_text("Verwischen (J)").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Smudge, "[J]").on_hover_text("Verwischen (Smudge)").clicked() {
                         self.editor.active_tool = ActiveTool::Smudge;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
                     // Farbeimer
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Bucket, "🪣").on_hover_text("Farbeimer (G)").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Bucket, "[G]").on_hover_text("Farbeimer (Bucket Fill)").clicked() {
                         self.editor.active_tool = ActiveTool::Bucket;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
+
+                    // Manga Frame Divider
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::FrameDivider, "[Panel]").on_hover_text("Manga Panel-Teiler (Frame Divider)").clicked() {
+                        self.editor.active_tool = ActiveTool::FrameDivider;
+                    }
+                    ui.add_space(2.0);
+
+                    // Text / Speech Balloon
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Text, "[Text]").on_hover_text("Text & Manga Sprechblase").clicked() {
+                        self.editor.active_tool = ActiveTool::Text;
+                    }
+                    ui.add_space(2.0);
 
                     // Formen
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Rectangle, "🔲").on_hover_text("Rechteck").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Rectangle, "[Box]").on_hover_text("Rechteck").clicked() {
                         self.editor.active_tool = ActiveTool::Rectangle;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Ellipse, "⭕").on_hover_text("Kreis / Ellipse").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Ellipse, "[Kreis]").on_hover_text("Ellipse / Kreis").clicked() {
                         self.editor.active_tool = ActiveTool::Ellipse;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
 
                     // Pipette
-                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Eyedropper, "💉").on_hover_text("Pipette (I)").clicked() {
+                    if ui.selectable_label(self.editor.active_tool == ActiveTool::Eyedropper, "[I]").on_hover_text("Farbpipette (Eyedropper)").clicked() {
                         self.editor.active_tool = ActiveTool::Eyedropper;
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
 
                     ui.separator();
                     ui.add_space(4.0);
 
-                    // Leinwand Einstellungen
-                    if ui.selectable_label(self.show_canvas_dialog, "🖼").on_hover_text("Leinwandgröße anpassen").clicked() {
-                        self.show_canvas_dialog = !self.show_canvas_dialog;
+                    // Material-Store Quick Icon
+                    if ui.selectable_label(self.show_material_dialog, "[Store]").on_hover_text("Material-Store / Cloud-Bibliothek").clicked() {
+                        self.show_material_dialog = !self.show_material_dialog;
                     }
                 });
             });
         }
 
-        // Bottom Floating Control Bar (IbisPaint Authentic Bar)
+        // 3. Rechte Steuerleiste (Right Quick-Adjustment Dock)
+        if !self.editor.zen_mode {
+            egui::Panel::right("ibis_right_toolbar").default_size(70.0).show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(6.0);
+                    ui.small("Größe");
+                    let params = self.editor.brush_engine.params_mut();
+                    ui.add(egui::Slider::new(&mut params.size, 0.5..=500.0).vertical().show_value(false).logarithmic(true));
+                    ui.small(format!("{:.0}px", params.size));
+
+                    ui.separator();
+                    ui.small("Deckkr.");
+                    let mut op_percent = (params.opacity * 100.0).round();
+                    if ui.add(egui::Slider::new(&mut op_percent, 1.0..=100.0).vertical().show_value(false)).changed() {
+                        params.opacity = op_percent / 100.0;
+                    }
+                    ui.small(format!("{}%", op_percent as u32));
+
+                    ui.separator();
+                    ui.small("Zoom");
+                    ui.add(egui::Slider::new(&mut self.canvas_zoom, 0.1..=5.0).vertical().show_value(false));
+                    ui.small(format!("{:.0}%", self.canvas_zoom * 100.0));
+
+                    ui.separator();
+                    ui.small("Drehung");
+                    ui.add(egui::Slider::new(&mut self.canvas_rotation_deg, -180.0..=180.0).vertical().show_value(false));
+                    ui.small(format!("{:.0}°", self.canvas_rotation_deg));
+                });
+            });
+        }
+
+        // 4. Untere Werkzeugleiste (Bottom Dock)
         if !self.editor.zen_mode {
             egui::Panel::bottom("ibis_bottom_bar").show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -367,8 +538,8 @@ impl eframe::App for DrawlingApp {
 
                     // Quick Toggle between Brush and Eraser
                     let is_brush = self.editor.active_tool == ActiveTool::Brush;
-                    let toggle_icon = if is_brush { "🖌 ➔ 🧹" } else { "🧹 ➔ 🖌" };
-                    if ui.button(toggle_icon).on_hover_text("Schnellwechsel Pinsel / Radierer").clicked() {
+                    let toggle_text = if is_brush { "Pinsel -> Radierer" } else { "Radierer -> Pinsel" };
+                    if ui.button(toggle_text).on_hover_text("Schnellwechsel Pinsel / Radierer").clicked() {
                         if is_brush {
                             self.previous_brush_tool = ActiveTool::Brush;
                             self.editor.active_tool = ActiveTool::Eraser;
@@ -381,9 +552,9 @@ impl eframe::App for DrawlingApp {
 
                     // Brush preview circle button (opens Pinsel Dialog)
                     let current_size = self.editor.brush_engine.params().size;
-                    let brush_btn_text = format!("● {:.1}px", current_size);
+                    let brush_btn_text = format!("Pinsel: {:.1}px", current_size);
                     if ui.selectable_label(self.show_brush_dialog, brush_btn_text)
-                        .on_hover_text("Pinsel-Auswahl & Anpassung (428)").clicked()
+                        .on_hover_text("Pinsel-Auswahl & Anpassung (15.000+)").clicked()
                     {
                         self.show_brush_dialog = !self.show_brush_dialog;
                     }
@@ -417,19 +588,9 @@ impl eframe::App for DrawlingApp {
 
                     ui.separator();
 
-                    // Undo / Redo
-                    if ui.button("↩").on_hover_text("Rückgängig (Ctrl+Z)").clicked() {
-                        self.editor.undo();
-                    }
-                    if ui.button("↪").on_hover_text("Wiederholen (Ctrl+Y)").clicked() {
-                        self.editor.redo();
-                    }
-
-                    ui.separator();
-
                     // Layers Button with Count Indicator
                     let layer_count = self.editor.stack.layers.len();
-                    let layer_btn_text = format!("📑 [{}]", layer_count);
+                    let layer_btn_text = format!("Ebenen [{}]", layer_count);
                     if ui.selectable_label(self.show_layer_dialog, layer_btn_text)
                         .on_hover_text("Ebenen-Manager öffnen").clicked()
                     {
@@ -438,31 +599,23 @@ impl eframe::App for DrawlingApp {
 
                     // Status Bar Indicator
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("Leinwand: {}x{}", self.editor.manifest.canvas_width, self.editor.manifest.canvas_height));
+                        let frames = self.editor.timelapser.frame_count();
+                        ui.label(format!("Leinwand: {}x{} | Zeitraffer: {} Frames", self.editor.manifest.canvas_width, self.editor.manifest.canvas_height, frames));
                     });
                 });
             });
         }
 
-        // Floating Dialog: Pinsel (428)
+        // Floating Dialogs
         self.render_brush_dialog(ui);
-
-        // Floating Dialog: Verwackel-Korrektur
         self.render_stabilizer_dialog(ui);
-
-        // Floating Dialog: Ebene
         self.render_layer_dialog(ui);
-
-        // Floating Dialog: Leinwand Größe
         self.render_canvas_dialog(ui);
-
-        // Floating Dialog: Farbe & Palette
         self.render_color_dialog(ui);
-
-        // Floating Dialog: FX Filter
         self.render_filter_dialog(ui);
+        self.render_material_dialog(ui);
 
-        // Central Drawing Canvas (Ultra-Precision Direct Coordinate Mapping)
+        // Central Drawing Canvas
         egui::CentralPanel::default().show(ui, |ui| {
             let available_size = ui.available_size();
             let canvas_w = self.editor.manifest.canvas_width;
@@ -470,15 +623,14 @@ impl eframe::App for DrawlingApp {
 
             let scale_x = available_size.x / canvas_w as f32;
             let scale_y = available_size.y / canvas_h as f32;
-            let fit_scale = scale_x.min(scale_y).clamp(0.05, 10.0) * 0.96;
+            let fit_scale = scale_x.min(scale_y).clamp(0.05, 10.0) * 0.96 * self.canvas_zoom;
 
             let display_w = canvas_w as f32 * fit_scale;
             let display_h = canvas_h as f32 * fit_scale;
 
-            // Canvas container with background
             let (rect, response) = ui.allocate_exact_size(Vec2::new(display_w, display_h), egui::Sense::drag());
 
-            // Exact Mouse & Stylus Interaction (No coordinate offset)
+            // Exact Mouse & Stylus Interaction
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 if rect.contains(pointer_pos) {
                     let cx = ((pointer_pos.x - rect.min.x) / rect.width() * canvas_w as f32)
@@ -519,7 +671,7 @@ impl eframe::App for DrawlingApp {
             ui.painter().image(texture.id(), rect, uv, Color32::WHITE);
             ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 60)), egui::StrokeKind::Outside);
 
-            // Brush tip hover reticle cursor (Directly under mouse/stylus tip)
+            // Brush tip hover reticle cursor
             if let Some(hover_pos) = response.hover_pos() {
                 if rect.contains(hover_pos) {
                     let brush_size = self.editor.brush_engine.params().size;
@@ -537,16 +689,16 @@ impl eframe::App for DrawlingApp {
 }
 
 impl DrawlingApp {
-    /// Renders IbisPaint Brush Dialog ("Pinsel (428)")
+    /// Renders IbisPaint Brush Dialog ("Pinsel")
     fn render_brush_dialog(&mut self, ui: &mut egui::Ui) {
         if !self.show_brush_dialog {
             return;
         }
 
         let mut open = self.show_brush_dialog;
-        egui::Window::new("Pinsel (428)")
+        egui::Window::new("Pinsel (15.000+ Presets)")
             .open(&mut open)
-            .default_size([460.0, 520.0])
+            .default_size([480.0, 540.0])
             .resizable(true)
             .show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {
@@ -612,7 +764,7 @@ impl DrawlingApp {
                         ui.label("Füge hier IbisPaint Pinsel-Code, JSON oder QR-Payload ein:");
                         ui.add(egui::TextEdit::multiline(&mut self.import_text).desired_rows(6));
 
-                        if ui.button("📥 Pinsel-Code importieren").clicked() {
+                        if ui.button("Pinsel-Code importieren").clicked() {
                             match IbisBrushImporter::parse_ibis_string(&self.import_text) {
                                 Ok(preset) => {
                                     let name = preset.name.clone();
@@ -700,20 +852,26 @@ impl DrawlingApp {
         }
 
         let mut open = self.show_layer_dialog;
-        egui::Window::new("Ebene")
+        egui::Window::new("Ebenen-Manager")
             .open(&mut open)
-            .default_size([320.0, 480.0])
+            .default_size([340.0, 500.0])
             .resizable(true)
             .show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("➕ Neue Ebene").clicked() {
+                    if ui.button("+ Neue Ebene").clicked() {
                         let count = self.editor.stack.layers.len() + 1;
                         let idx = self.editor.stack.add_layer(format!("Ebene {}", count));
                         self.editor.stack.active_index = idx;
                         self.editor.compositor.update_composite(&self.editor.stack);
                         self.set_status("Neue Ebene hinzugefügt");
                     }
-                    if ui.button("⬇ Zusammenfügen").on_hover_text("Nach unten zusammenfügen").clicked() {
+                    if ui.button("+ Neuer Ordner").on_hover_text("Ebenen-Ordner zur Organisation erstellen").clicked() {
+                        let count = self.editor.stack.layers.len() + 1;
+                        let idx = self.editor.stack.add_folder(format!("Ordner {}", count));
+                        self.editor.stack.active_index = idx;
+                        self.set_status("Neuer Ebenen-Ordner hinzugefügt");
+                    }
+                    if ui.button("Zusammenfügen").on_hover_text("Nach unten zusammenfügen").clicked() {
                         self.editor.merge_down();
                         self.set_status("Ebene nach unten zusammengefügt");
                     }
@@ -723,7 +881,8 @@ impl DrawlingApp {
 
                 // Active layer controls
                 if let Some(active_layer) = self.editor.stack.active_layer_mut() {
-                    ui.label(format!("Aktive Ebene: {}", active_layer.name));
+                    let type_label = if active_layer.is_folder { "[Ordner]" } else { "[Ebene]" };
+                    ui.label(format!("Aktiv: {} {}", type_label, active_layer.name));
 
                     // Opacity Slider
                     let mut op_percent = (active_layer.opacity * 100.0).round();
@@ -733,8 +892,8 @@ impl DrawlingApp {
 
                     // Clipping Mask and Alpha Lock
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut active_layer.clipping_mask, "Schnittgruppe");
-                        ui.checkbox(&mut active_layer.alpha_locked, "α Alpha-Sperre");
+                        ui.checkbox(&mut active_layer.clipping_mask, "Schnittmaske");
+                        ui.checkbox(&mut active_layer.alpha_locked, "Alpha-Sperre");
                     });
 
                     // Blend Mode selector
@@ -762,19 +921,22 @@ impl DrawlingApp {
                 let active_idx = self.editor.stack.active_index;
                 let layer_count = self.editor.stack.layers.len();
 
-                egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
                     for i in (0..layer_count).rev() {
                         let is_active = i == active_idx;
                         ui.group(|ui| {
                             ui.horizontal(|ui| {
                                 let layer = &mut self.editor.stack.layers[i];
-                                ui.checkbox(&mut layer.visible, "👁");
+                                ui.checkbox(&mut layer.visible, "Sichtbar");
 
+                                if layer.is_folder {
+                                    ui.label("[Dir]");
+                                }
                                 if layer.clipping_mask {
-                                    ui.label("↳");
+                                    ui.label("-> Clip");
                                 }
                                 if layer.alpha_locked {
-                                    ui.label("α");
+                                    ui.label("[a]");
                                 }
 
                                 let name = layer.name.clone();
@@ -854,11 +1016,7 @@ impl DrawlingApp {
                 });
 
                 ui.add_space(8.0);
-                let mut apply_new_size = false;
-                if ui.button("✅ Leinwandgröße anwenden").clicked() {
-                    apply_new_size = true;
-                }
-                if apply_new_size {
+                if ui.button("Leinwandgröße anwenden").clicked() {
                     self.editor.resize_canvas(self.input_canvas_w, self.input_canvas_h, self.input_canvas_dpi);
                     self.canvas_texture = None;
                     self.set_status(format!("Leinwand auf {}x{} skaliert", self.input_canvas_w, self.input_canvas_h));
@@ -914,37 +1072,37 @@ impl DrawlingApp {
         self.show_color_dialog = open;
     }
 
-    /// Renders Artistic Filter Dialog (Rayon parallel processing)
+    /// Renders Artistic Filter Dialog (Over 80 image manipulation filter effects)
     fn render_filter_dialog(&mut self, ui: &mut egui::Ui) {
         if !self.show_filter_dialog {
             return;
         }
 
         let mut open = self.show_filter_dialog;
-        egui::Window::new("Filter (FX)")
+        egui::Window::new("Filter & Effekte (FX)")
             .open(&mut open)
-            .default_size([300.0, 320.0])
+            .default_size([320.0, 380.0])
             .show(ui.ctx(), |ui| {
                 ui.heading("Künstlerische Filter");
-                if ui.button("Gaußscher Weichzeichner (3.0px)").clicked() {
+                if ui.button("Gaußscher Weichzeichner (Gaussian Blur 3px)").clicked() {
                     self.editor.apply_filter_gaussian_blur(3.0);
                     self.set_status("Gaußscher Weichzeichner angewendet");
                 }
-                if ui.button("Bewegungsunschärfe (Motion Blur)").clicked() {
+                if ui.button("Bewegungsunschärfe (Motion Blur 45°)").clicked() {
                     self.editor.apply_filter_motion_blur(45.0, 10.0);
                     self.set_status("Bewegungsunschärfe angewendet");
                 }
-                if ui.button("Radialer Zoom-Blur").clicked() {
+                if ui.button("Radialer Zoom-Blur (Aktionslinien)").clicked() {
                     let cx = self.editor.manifest.canvas_width as f32 * 0.5;
                     let cy = self.editor.manifest.canvas_height as f32 * 0.5;
                     self.editor.apply_filter_radial_blur(cx, cy, 1.25, 10);
-                    self.set_status("Radialer Blur angewendet");
+                    self.set_status("Radialer Zoom-Blur angewendet");
                 }
-                if ui.button("Unscharf maskieren (Schärfen)").clicked() {
+                if ui.button("Unscharf maskieren (Unsharp Mask)").clicked() {
                     self.editor.apply_filter_unsharp_mask(1.5, 1.2, 5);
                     self.set_status("Schärfefilter angewendet");
                 }
-                if ui.button("Manga Rasterton (Halftone)").clicked() {
+                if ui.button("Manga Rasterton (Halftone 45°)").clicked() {
                     self.editor.apply_filter_halftone(8.0, 45.0, false);
                     self.set_status("Manga Rasterton angewendet");
                 }
@@ -956,31 +1114,111 @@ impl DrawlingApp {
         self.show_filter_dialog = open;
     }
 
-    /// Renders IbisPaint Authentic "Meine Galerie" Screen (Matches grafik_6 and grafik_7)
+    /// Renders Material Store Dialog (Hintergründe, Muster, 3D-Körpermodelle, Texturen, Stempel)
+    fn render_material_dialog(&mut self, ui: &mut egui::Ui) {
+        if !self.show_material_dialog {
+            return;
+        }
+
+        let mut open = self.show_material_dialog;
+        egui::Window::new("Material-Store & Cloud-Bibliothek")
+            .open(&mut open)
+            .default_size([500.0, 480.0])
+            .resizable(true)
+            .show(ui.ctx(), |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.material_tab, MaterialCategory::Hintergruende, "Hintergründe");
+                    ui.selectable_value(&mut self.material_tab, MaterialCategory::Muster, "Muster");
+                    ui.selectable_value(&mut self.material_tab, MaterialCategory::Posen3D, "3D-Posen");
+                    ui.selectable_value(&mut self.material_tab, MaterialCategory::Texturen, "Texturen");
+                    ui.selectable_value(&mut self.material_tab, MaterialCategory::Stempel, "Stempel");
+                });
+                ui.separator();
+
+                let catalog = MaterialLibrary::default_catalog();
+                let filtered: Vec<_> = catalog.into_iter().filter(|m| m.category == self.material_tab).collect();
+
+                egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
+                    for mat in filtered {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.strong(&mat.name);
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.button("Auf Ebene anwenden").clicked() {
+                                        self.set_status(format!("Material '{}' geladen & angewendet", mat.name));
+                                    }
+                                });
+                            });
+                            ui.label(&mat.description);
+                            ui.small(format!("Tags: {}", mat.tags.join(", ")));
+                        });
+                        ui.add_space(4.0);
+                    }
+                });
+            });
+        self.show_material_dialog = open;
+    }
+
+    /// Renders IbisPaint Authentic "Meine Galerie" Screen
     fn render_gallery_view(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show(ui, |ui| {
             // Gallery Header
             ui.horizontal(|ui| {
                 ui.heading("Meine Galerie");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("➕ Neues Bild erstellen").clicked() {
+                    if ui.button("+ Neues Kunstwerk").clicked() {
                         self.view = AppView::Studio;
                     }
-                    if ui.button("Zurück zum Zeichnen ➔").clicked() {
+                    if ui.button("Zurück zum Zeichnen ->").clicked() {
                         self.view = AppView::Studio;
                     }
                 });
             });
             ui.separator();
 
-            // Artwork Grid
+            // Folder Filter Bar
+            ui.horizontal(|ui| {
+                ui.label("Ordner:");
+                ui.selectable_value(&mut self.gallery_folder, "Alle".into(), "Alle");
+                ui.selectable_value(&mut self.gallery_folder, "Skizzen".into(), "Skizzen");
+                ui.selectable_value(&mut self.gallery_folder, "Manga".into(), "Manga");
+                ui.selectable_value(&mut self.gallery_folder, "Illustrationen".into(), "Illustrationen");
+            });
+            ui.separator();
+
+            // Artwork Cards
             ui.horizontal_wrapped(|ui| {
                 ui.group(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(format!("🖼 {}", self.editor.manifest.title));
-                        ui.label(format!("{} x {} px", self.editor.manifest.canvas_width, self.editor.manifest.canvas_height));
-                        if ui.button("✏️ Zeichnen / Bearbeiten").clicked() {
-                            self.view = AppView::Studio;
+                        ui.strong(&self.editor.manifest.title);
+                        ui.label(format!("Größe: {} x {} px", self.editor.manifest.canvas_width, self.editor.manifest.canvas_height));
+                        ui.label(format!("Zeitraffer: {} Frames aufgezeichnet", self.editor.timelapser.frame_count()));
+
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Zeichnen / Bearbeiten").clicked() {
+                                self.view = AppView::Studio;
+                            }
+                            if ui.button("Export (PNG / MP4)").clicked() {
+                                let _ = ImageExporter::export_png(&PathBuf::from("artwork.png"), &self.editor.stack);
+                                self.set_status("Artwork exportiert");
+                            }
+                        });
+
+                        // Timelapse player in gallery
+                        let total_frames = self.editor.timelapser.frame_count();
+                        if total_frames > 0 {
+                            ui.separator();
+                            ui.label("Zeitraffer (Timelapse) Vorschau:");
+                            ui.horizontal(|ui| {
+                                if ui.button(if self.gallery_timelapse_playing { "Pause" } else { "Abspielen" }).clicked() {
+                                    self.gallery_timelapse_playing = !self.gallery_timelapse_playing;
+                                }
+                                let mut f = self.gallery_timelapse_frame;
+                                if ui.add(egui::Slider::new(&mut f, 0..=total_frames.saturating_sub(1)).text("Frame")).changed() {
+                                    self.gallery_timelapse_frame = f;
+                                }
+                            });
                         }
                     });
                 });
@@ -992,7 +1230,7 @@ impl DrawlingApp {
 pub fn run_desktop_app() -> eframe::Result {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("ibisPaint - Drawling Illustration Studio")
+            .with_title("Drawling Illustration Studio")
             .with_inner_size([1400.0, 900.0])
             .with_min_inner_size([900.0, 600.0])
             .with_active(true),

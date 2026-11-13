@@ -140,6 +140,29 @@ impl SelectionMask {
         }
     }
 
+    /// Paints brush dab into selection mask (for Quick Mask mode)
+    pub fn paint_brush_dab(&mut self, cx: f32, cy: f32, radius: f32, value: u8) {
+        if radius <= 0.0 {
+            return;
+        }
+        let min_x = ((cx - radius).floor() as i32).max(0) as u32;
+        let max_x = ((cx + radius).ceil() as i32).min(self.width as i32) as u32;
+        let min_y = ((cy - radius).floor() as i32).max(0) as u32;
+        let max_y = ((cy + radius).ceil() as i32).min(self.height as i32) as u32;
+        let r_sq = radius * radius;
+
+        for y in min_y..max_y {
+            let dy = y as f32 + 0.5 - cy;
+            let dy_sq = dy * dy;
+            for x in min_x..max_x {
+                let dx = x as f32 + 0.5 - cx;
+                if dx * dx + dy_sq <= r_sq {
+                    self.set(x, y, value);
+                }
+            }
+        }
+    }
+
     /// Magic Wand flood-fill selection with color tolerance
     /// `seed_x`, `seed_y`: starting coordinate
     /// `tolerance`: Euclidean distance threshold in RGB space [0.0, 441.67] (or 0..255)

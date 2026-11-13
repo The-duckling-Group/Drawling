@@ -8,7 +8,7 @@
 ![Stylus](https://img.shields.io/badge/stylus-XP--Pen%20%7C%20Wacom%20%7C%20Huion-purple)
 ![Release](https://img.shields.io/github/v/release/The-duckling-Group/Drawling?label=latest%20release&color=success)
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue)
-![Tests](https://img.shields.io/badge/tests-47%20passed-success)
+![Tests](https://img.shields.io/badge/tests-54%20passed-success)
 
 ### [Download Windows Executable (.exe)](https://github.com/The-duckling-Group/Drawling/releases/latest)
 

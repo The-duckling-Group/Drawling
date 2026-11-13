@@ -16,6 +16,10 @@ pub struct Layer {
     pub locked: bool,
     pub alpha_locked: bool,
     pub clipping_mask: bool,
+    #[serde(default)]
+    pub is_folder: bool,
+    #[serde(default)]
+    pub folder_id: Option<Uuid>,
     #[serde(skip)]
     pub pixels: Vec<u8>,
 }
@@ -34,6 +38,8 @@ impl Layer {
             locked: false,
             alpha_locked: false,
             clipping_mask: false,
+            is_folder: false,
+            folder_id: None,
             pixels: vec![0; size],
         }
     }
@@ -130,6 +136,8 @@ impl Layer {
             locked: self.locked,
             alpha_locked: self.alpha_locked,
             clipping_mask: self.clipping_mask,
+            is_folder: self.is_folder,
+            folder_id: self.folder_id,
             pixels: self.pixels.clone(),
         }
     }
@@ -169,6 +177,15 @@ impl LayerStack {
         let idx = (self.active_index + 1).min(self.layers.len());
         let new_layer = Layer::new(name, self.width, self.height);
         self.layers.insert(idx, new_layer);
+        self.active_index = idx;
+        idx
+    }
+
+    pub fn add_folder(&mut self, name: impl Into<String>) -> usize {
+        let idx = (self.active_index + 1).min(self.layers.len());
+        let mut folder = Layer::new(name, self.width, self.height);
+        folder.is_folder = true;
+        self.layers.insert(idx, folder);
         self.active_index = idx;
         idx
     }

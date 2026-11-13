@@ -27,5 +27,8 @@ pub use tablet::{
     tilt_to_azimuth_altitude, PressureCurve, PressureCurveMode, StylusButtons,
     TabletCalibrationProfile, TabletInputEvent, TabletTool,
 };
-pub use tool::{ColorPicker, FloodFill, ShapeDrawer, SmudgeEngine};
+pub use tool::{
+    ColorPicker, FloodFill, FrameDivider, MangaPanel, MangaRastertone, ScreentoneStyle,
+    ShapeDrawer, SmudgeEngine, SpeechBalloon, SpeechBalloonKind, TextOrientation, TextToolOptions,
+};
 pub use transform::{MeshWarpGrid, PerspectiveGrid, Ruler, Transform2D};

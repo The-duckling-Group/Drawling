@@ -19,6 +19,16 @@ pub enum Ruler {
         p3: (f32, f32), // End point
         snap_distance: f32,
     },
+    Ellipse {
+        center: (f32, f32),
+        radius_x: f32,
+        radius_y: f32,
+        snap_distance: f32,
+    },
+    Perspective {
+        vanishing_points: Vec<(f32, f32)>,
+        snap_distance: f32,
+    },
 }
 
 impl Ruler {
@@ -85,6 +95,44 @@ impl Ruler {
 
                 best_pt
             }
+
+            Ruler::Ellipse { center, radius_x, radius_y, snap_distance } => {
+                if *radius_x < 1e-4 || *radius_y < 1e-4 {
+                    return pt;
+                }
+                let angle = (pt.1 - center.1).atan2(pt.0 - center.0);
+                let target_x = center.0 + radius_x * angle.cos();
+                let target_y = center.1 + radius_y * angle.sin();
+                let dist = ((target_x - pt.0).powi(2) + (target_y - pt.1).powi(2)).sqrt();
+                if dist <= *snap_distance {
+                    (target_x, target_y)
+                } else {
+                    pt
+                }
+            }
+
+            Ruler::Perspective { vanishing_points, snap_distance } => {
+                let mut best_pt = pt;
+                let mut min_dist = *snap_distance;
+                let ray_step = std::f32::consts::PI / 12.0; // 15-degree guide rays
+                for vp in vanishing_points {
+                    let dx = pt.0 - vp.0;
+                    let dy = pt.1 - vp.1;
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    if dist > 1e-4 {
+                        let angle = dy.atan2(dx);
+                        let snapped_angle = (angle / ray_step).round() * ray_step;
+                        let target_x = vp.0 + dist * snapped_angle.cos();
+                        let target_y = vp.1 + dist * snapped_angle.sin();
+                        let d = ((target_x - pt.0).powi(2) + (target_y - pt.1).powi(2)).sqrt();
+                        if d < min_dist {
+                            min_dist = d;
+                            best_pt = (target_x, target_y);
+                        }
+                    }
+                }
+                best_pt
+            }
         }
     }
 }
@@ -120,5 +168,25 @@ mod tests {
         let pt = (100.0, 154.0); // radius 54, target radius 50
         let snapped = ruler.snap(pt);
         assert_eq!(snapped, (100.0, 150.0));
+    }
+
+    #[test]
+    fn test_ellipse_and_perspective_ruler_snap() {
+        let ellipse = Ruler::Ellipse {
+            center: (200.0, 200.0),
+            radius_x: 100.0,
+            radius_y: 50.0,
+            snap_distance: 10.0,
+        };
+        let snapped_e = ellipse.snap((302.0, 200.0));
+        assert!((snapped_e.0 - 300.0).abs() < 0.1);
+        assert!((snapped_e.1 - 200.0).abs() < 0.1);
+
+        let persp = Ruler::Perspective {
+            vanishing_points: vec![(0.0, 100.0)],
+            snap_distance: 15.0,
+        };
+        let snapped_p = persp.snap((100.0, 104.0));
+        assert!((snapped_p.1 - 100.0).abs() < 1.0);
     }
 }

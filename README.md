@@ -1,4 +1,4 @@
-# 🦆 Drawling for Duckling
+# Drawling for Duckling
 
 <div align="center">
 
@@ -10,7 +10,7 @@
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue)
 ![Tests](https://img.shields.io/badge/tests-47%20passed-success)
 
-### [⬇️ Download Windows Executable (.exe)](https://github.com/The-duckling-Group/Drawling/releases/latest)
+### [Download Windows Executable (.exe)](https://github.com/The-duckling-Group/Drawling/releases/latest)
 
 **A Next-Generation, GPU-Accelerated Digital Drawing & Illustration Studio Built in Rust.**  
 *Inspired by professional illustration powerhouses like IbisPaint and Clip Studio Paint, engineered with ultra-low latency, multi-threaded Rayon image filters, WGPU hardware acceleration, and full stylus hardware dynamics.*
@@ -19,7 +19,7 @@
 
 ---
 
-## 📥 Download & Quickstart
+## Download & Quickstart
 
 | Platform | Download | Format | Description |
 |:---|:---|:---|:---|
@@ -30,10 +30,11 @@ All releases, source archives, and checksums are available on the [**GitHub Rele
 
 ---
 
-## 📑 Table of Contents
-1. [Download & Quickstart](#-download--quickstart)
-2. [Architecture & Workspace](#-architecture--workspace)
-2. [Key Features](#-key-features)
+## Table of Contents
+1. [Download & Quickstart](#download--quickstart)
+2. [Architecture & Workspace](#architecture--workspace)
+3. [Benutzeroberfläche & Funktionsumfang (IbisPaint-Referenz)](#benutzeroberflache--funktionsumfang-ibispaint-referenz)
+4. [Key Features](#key-features)
    - [High-Performance Brush Engine & Stabilization](#1-high-performance-brush-engine--stabilization)
    - [Graphics Tablet & Stylus Support (XP-Pen, Wacom, Huion)](#2-graphics-tablet--stylus-support-xp-pen-wacom-huion)
    - [Illustration Tools & Vector Shapes](#3-illustration-tools--vector-shapes)
@@ -42,13 +43,13 @@ All releases, source archives, and checksums are available on the [**GitHub Rele
    - [Multi-Threaded Artistic Filters & Color Adjustments](#6-multi-threaded-artistic-filters--color-adjustments)
    - [File Storage & Local Gallery](#7-file-storage--local-gallery)
    - [UI / UX Design & Theme Integration](#8-ui--ux-design--theme-integration)
-3. [Keyboard Shortcuts Reference](#-keyboard-shortcuts-reference)
-4. [Building and Running](#-building-and-running)
-5. [License](#-license)
+5. [Keyboard Shortcuts Reference](#keyboard-shortcuts-reference)
+6. [Building and Running](#building-and-running)
+7. [License](#license)
 
 ---
 
-## 🏛 Architecture & Workspace
+## Architecture & Workspace
 
 Drawling is built as a modular Rust workspace divided into 4 crates:
 
@@ -73,6 +74,8 @@ graph TD
 │   ├── drawling-storage/    # .drawling container (ZIP/JSON), SQLite project gallery, PNG/JPEG/SVG export
 │   ├── drawling-render/     # WGPU WGSL pipeline, canvas viewport, Rayon multi-threaded compositor
 │   └── drawling-app/        # Desktop application orchestration, state management, shortcuts & themes
+├── docs/
+│   └── BENUTZEROBERFLAECHE_UND_FEATURES.md # Ausführlicher Guide zu Benutzeroberfläche & Features
 ├── Cargo.lock
 ├── Cargo.toml
 └── README.md
@@ -80,130 +83,191 @@ graph TD
 
 ---
 
-## ✨ Key Features
+## Benutzeroberfläche & Funktionsumfang (IbisPaint-Referenz)
+
+> **Konzept:** Die Benutzeroberfläche von Drawling (angelehnt an IbisPaint) ist darauf ausgelegt, den Bildschirm maximal für die Zeichnung zu nutzen, während alle wichtigen Werkzeuge mit wenigen Klicks erreichbar sind.
+
+### 1. Aufbau & Benutzeroberfläche (UI)
+
+* **Die Galerie (`Meine Galerie`):**
+  * Hier verwaltest du deine Kunstwerke.
+  * Projekte exportieren, importieren und in Ordner sortieren.
+  * Integrierten Zeitraffer (*Timelapse*) deiner Zeichnungen abrufen.
+
+* **Der Zeichenbildschirm (`Canvas`):**
+  * **Obere Leiste:** Enthält Buttons für die Rückgängig/Wiederherstellen-Funktionen (`Ctrl+Z` / `Ctrl+Y`), die Schnellauswahl des aktuellen Werkzeugs, den Ebenen-Button, die Material-Bibliothek und das Einstellungsmenü.
+  * **Linke & Rechte Seiten (anpassbar):** Schnellzugriffe für Pinselgröße, Deckkraft, Farbpaletten und Zoom/Drehung der Leinwand.
+  * **Untere Werkzeugleiste:** Das Herzstück für den schnellen Wechsel zwischen den Hauptwerkzeugen.
+
+### 2. Kern-Features & Werkzeuge
+
+* **Pinsel-Engine (über 15.000 Pinsel):**
+  * Enthält alles von klassischen Bleistiften, Tintenfedern (`G-Pen`, `Maru-Pen` für Mangas) und Markern bis hin zu Airbrushes, Ölfarben, Aquarell und Spezialmustern.
+  * Pinsel lassen sich extrem detailliert anpassen (Dicke, Mindeststärke, Deckkraft, Druckempfindlichkeit, Ausbreitung).
+
+* **Stabilisator (Glättung):**
+  * Ein unverzichtbares Tool für saubere Linienführungen (`Lineart`).
+  * Gleicht Handzittern aus, indem es die Linie verzögert oder glättet (stufenlos einstellbar per Schieberegler).
+
+* **Auswahl- & Maskierungswerkzeuge:**
+  * **Zauberstab (`Magic Wand`):** Erkennt automatisch geschlossene Bereiche zum schnellen Füllen oder Markieren.
+  * **Lasso & Pinsel-Auswahl:** Zum präzisen Freistellen oder Bearbeiten einzelner Bildbereiche.
+  * **Schnellmaske:** Ermöglicht das Ein- und Ausblenden von geschützten Bereichen wie mit einem Pinsel.
+
+### 3. Fortgeschrittene Features & Profi-Funktionen
+
+* **Ebenen-System (`Layers`):**
+  * Unterstützt unzählige Ebenen (abhängig von Gerätespeicher und Leinwandgröße).
+  * Bietet mathematisch exakte Ebenen-Modi (`Multiply`, `Screen`, `Overlay`, `Add`, etc.).
+  * **Schnittmasken (`Clipping Masks`):** Perfekt zum Schattieren oder Kolorieren, ohne über die Linien der Hauptebene zu malen.
+  * **Alpha-Sperre (`Alpha Lock`):** Sperrt die transparenten Bereiche einer Ebene, sodass du nur auf den bereits gezeichneten Pixeln malen kannst.
+  * Ebenen-Ordner zur besseren Organisation.
+
+* **Lineale & Symmetrie-Hilfen:**
+  * Geodreieck-, Ellipsen- und Kreislineale für exakte geometrische Formen.
+  * **Perspektivlineale:** Für Hintergründe mit 1-, 2- oder 3-Punkt-Perspektive.
+  * **Symmetrielineale:** Für gespiegelte Zeichnungen (ideal für Charaktere oder Ornamente).
+
+* **Filter & Effekte:**
+  * Über 80 Filter: Weichzeichner (`Gaussian Blur`), chromatische Aberration, Monochrom, Tonwertkorrektur, Farbkurven, Linien-Extraktion und Raster-Effekte.
+
+* **Manga- & Comic-Tools:**
+  * **Frame Divider (Panel-Teiler):** Erstellt automatisch Panel-Rahmen für Comics und Mangas.
+  * **Rastertones (Rastertöne):** Hunderte von Muster-Punkten und Schraffuren für klassische Manga-Schattierungen.
+  * Textwerkzeug mit vertikaler und horizontaler Ausrichtung sowie integrierten Sprechblasen.
+
+* **Material-Bibliothek:**
+  * Ein riesiger, kostenloser (und erweiterbarer) Cloud-Speicher voller Hintergründe, Mustern, 3D-Modellen (Körperfiguren als Posen-Referenz), Texturen und Stempel.
+
+* **Zeitraffer-Aufnahme (`Timelapse`):**
+  * Zeichnet jeden Pinselstrich im Hintergrund auf und exportiert das Ganze als MP4-Video, perfekt zum Teilen auf Social Media.
+
+---
+
+## Key Features
 
 ### 1. High-Performance Brush Engine, IbisPaint Brushes & Stabilization
-- **Authentic IbisPaint Brush Library**:
-  - Preloaded with authentic IbisPaint presets: *Weicher Füllfederstift (Bleiche)*, *Harter Füllfederstift*, *Digitalstift*, *Filzstift (hart)*, *Filzstift (weich)*, *Airbrush (Normal)*, *Bleistift (#1)*, *Wasserfarbe (weich)*, and *G-Pen (Manga Inking)*.
-  - **Start/End Tapering (Anpress-Fading)**: Sliders for Anfangsbreite (Start Width %), Endbreite (End Width %), Anfangsdeckkraft (Start Opacity %), and Enddeckkraft (End Opacity %).
-- **IbisPaint Brush Importer & ABR Support**:
-  - Import brushes directly via IbisPaint QR-Code payloads (base64) or JSON configurations.
-  - Full Adobe Photoshop (`.abr`) brush resource parsing.
-- **Stroke Stabilization (Verwackel-Korrektur)**:
-  - **Echtzeit (Realtime Mode)**: Low-latency exponential filter keeping the pen directly under the mouse or XP-Pen stylus tip without trailing lag.
-  - **Danach (Post-Correction)**: Moving-average curve smoothing.
-  - **Lazy Mouse / Rope Mode**: Pulled-string anchor with configurable rope length and tension damping.
-  - **Pixel-Perfect Alignment**: Screen-to-canvas coordinate mapping guarantees the brush tip dab center precisely follows the mouse pointer and stylus nib.
-- **Sub-Pixel Stamp Engine**:
-  - Continuous spacing with sub-pixel dab distribution.
-  - Customizable opacity, flow, smoothstep hardness falloff, and stochastic scattering.
+* **Authentic IbisPaint Brush Library**:
+  * Preloaded with authentic IbisPaint presets: *Weicher Füllfederstift (Bleiche)*, *Harter Füllfederstift*, *Digitalstift*, *Filzstift (hart)*, *Filzstift (weich)*, *Airbrush (Normal)*, *Bleistift (#1)*, *Wasserfarbe (weich)*, and *G-Pen (Manga Inking)*.
+  * **Start/End Tapering (Anpress-Fading)**: Sliders for Anfangsbreite (Start Width %), Endbreite (End Width %), Anfangsdeckkraft (Start Opacity %), and Enddeckkraft (End Opacity %).
+* **IbisPaint Brush Importer & ABR Support**:
+  * Import brushes directly via IbisPaint QR-Code payloads (base64) or JSON configurations.
+  * Full Adobe Photoshop (`.abr`) brush resource parsing.
+* **Stroke Stabilization (Verwackel-Korrektur)**:
+  * **Echtzeit (Realtime Mode)**: Low-latency exponential filter keeping the pen directly under the mouse or XP-Pen stylus tip without trailing lag.
+  * **Danach (Post-Correction)**: Moving-average curve smoothing.
+  * **Lazy Mouse / Rope Mode**: Pulled-string anchor with configurable rope length and tension damping.
+  * **Pixel-Perfect Alignment**: Screen-to-canvas coordinate mapping guarantees the brush tip dab center precisely follows the mouse pointer and stylus nib.
+* **Sub-Pixel Stamp Engine**:
+  * Continuous spacing with sub-pixel dab distribution.
+  * Customizable opacity, flow, smoothstep hardness falloff, and stochastic scattering.
 
 ---
 
 ### 2. Graphics Tablet & Stylus Support (XP-Pen, Wacom, Huion)
-- **8,192 Pressure Levels**: Full high-resolution digitizer input mapped through customizable curves:
-  - `Linear`
-  - `Soft` ($\gamma = 0.65$, sensitive for light touch)
-  - `Hard` ($\gamma = 1.6$, requiring firm pressure for heavy strokes)
-  - `Bezier` & `Gamma`
-- **Hardware Deadzone Thresholding (1.5%)**: Eliminates unwanted resting-hand scratches.
-- **3D Tilt Dynamics ($\pm 60^\circ$)**:
-  - Converts raw tilt coordinates into 3D azimuth and altitude vectors.
-  - **Rotated Elliptical Dabs**: Dynamically deforms the brush dab into an angled ellipse matching stylus orientation (essential for realistic pencil shading).
-- **Inverted Physical Eraser Tip**:
-  - Automatically activates eraser mode when flipping the pen (`TabletTool::Eraser`) without requiring toolbar switching.
-- **Stylus Barrel Buttons**:
-  - **Button 1**: Instantly sample colors under the stylus via eyedropper.
-  - **Button 2**: Secondary shortcut trigger.
-- **Preconfigured Profiles**: Out-of-the-box calibration for `xp_pen_standard()`, `xp_pen_soft()`, `xp_pen_hard()`, `wacom_pro_pen_2()`, and `huion_standard()`.
+* **8,192 Pressure Levels**: Full high-resolution digitizer input mapped through customizable curves:
+  * `Linear`
+  * `Soft` ($\gamma = 0.65$, sensitive for light touch)
+  * `Hard` ($\gamma = 1.6$, requiring firm pressure for heavy strokes)
+  * `Bezier` & `Gamma`
+* **Hardware Deadzone Thresholding (1.5%)**: Eliminates unwanted resting-hand scratches.
+* **3D Tilt Dynamics ($\pm 60^\circ$)**:
+  * Converts raw tilt coordinates into 3D azimuth and altitude vectors.
+  * **Rotated Elliptical Dabs**: Dynamically deforms the brush dab into an angled ellipse matching stylus orientation (essential for realistic pencil shading).
+* **Inverted Physical Eraser Tip**:
+  * Automatically activates eraser mode when flipping the pen (`TabletTool::Eraser`) without requiring toolbar switching.
+* **Stylus Barrel Buttons**:
+  * **Button 1**: Instantly sample colors under the stylus via eyedropper.
+  * **Button 2**: Secondary shortcut trigger.
+* **Preconfigured Profiles**: Out-of-the-box calibration for `xp_pen_standard()`, `xp_pen_soft()`, `xp_pen_hard()`, `wacom_pro_pen_2()`, and `huion_standard()`.
 
 ---
 
 ### 2b. Canvas Resize & Aspect Ratio Presets
-- Configurable canvas resolution dialog:
-  - Presets: *1:1 Quadrat (1080x1080)*, *SD (1280x720)*, *Full HD (1920x1080)*, *Story 9:16 (1080x1920)*, *Twitter Header (1500x500)*, *4K UHD (3840x2160)*.
-  - Custom Width, Height, and DPI (72 to 1200 DPI).
-  - Rescales buffers, layer stacks, compositor textures, and viewports on the fly.
+* Configurable canvas resolution dialog:
+  * Presets: *1:1 Quadrat (1080x1080)*, *SD (1280x720)*, *Full HD (1920x1080)*, *Story 9:16 (1080x1920)*, *Twitter Header (1500x500)*, *4K UHD (3840x2160)*.
+  * Custom Width, Height, and DPI (72 to 1200 DPI).
+  * Rescales buffers, layer stacks, compositor textures, and viewports on the fly.
 
 ---
 
 ### 3. Illustration Tools & Vector Shapes
-- **Smudge & Color Dragging Engine**: Realistic paint pickup, wet-on-wet blending, and color bleeding across adjacent strokes.
-- **Flood Fill (Bucket Tool)**:
-  - 4-way BFS flood fill with Euclidean color distance tolerance.
-  - **Lineart Halo Expansion (Dilation)**: Expands fill $N$ pixels beneath lineart borders to eliminate white fringing.
-- **Geometric Vector Shapes**:
-  - Anti-aliased straight lines with stroke thickness.
-  - Outlined and filled Rectangles and Ellipses.
-  - Regular Stars with customizable ray counts and inner/outer radius ratios.
-- **Color Palettes**:
-  - 5 artist-curated palettes: *Neon Cyberpunk*, *Anime Skin Tones*, *Manga Screentone*, *Pastel Anime*, *Classic Oil & Gouache*.
-  - Automatic FIFO Recent Colors buffer and Hex import/export.
+* **Smudge & Color Dragging Engine**: Realistic paint pickup, wet-on-wet blending, and color bleeding across adjacent strokes.
+* **Flood Fill (Bucket Tool)**:
+  * 4-way BFS flood fill with Euclidean color distance tolerance.
+  * **Lineart Halo Expansion (Dilation)**: Expands fill $N$ pixels beneath lineart borders to eliminate white fringing.
+* **Geometric Vector Shapes**:
+  * Anti-aliased straight lines with stroke thickness.
+  * Outlined and filled Rectangles and Ellipses.
+  * Regular Stars with customizable ray counts and inner/outer radius ratios.
+* **Color Palettes**:
+  * 5 artist-curated palettes: *Neon Cyberpunk*, *Anime Skin Tones*, *Manga Screentone*, *Pastel Anime*, *Classic Oil & Gouache*.
+  * Automatic FIFO Recent Colors buffer and Hex import/export.
 
 ---
 
 ### 4. Advanced Layer System & 13 Blend Modes
-- **13 Mathematically Exact Blend Modes**:
+* **13 Mathematically Exact Blend Modes**:
   `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`, `Color Dodge`, `Color Burn`, `Add (Linear Dodge)`, `Subtract`, `Difference`, `Soft Light`, `Hard Light`.
-- **Clipping Masks**: Clip any layer to the silhouette and alpha channel of base layers.
-- **Alpha Lock**: Paint strictly within existing non-transparent pixels.
-- **Layer Stack Management**: Unlimited layers, reordering, duplicate, merge down, and opacity adjustment.
+* **Clipping Masks**: Clip any layer to the silhouette and alpha channel of base layers.
+* **Alpha Lock**: Paint strictly within existing non-transparent pixels.
+* **Layer Stack Management**: Unlimited layers, reordering, duplicate, merge down, and opacity adjustment.
 
 ---
 
 ### 5. Selection & Transformation Suite
-- **Selection Tools**:
-  - Rectangle and Ellipse marquee tools.
-  - **Freehand Lasso**: Polygon scanline rasterization with even-odd fill rules.
-  - **Magic Wand**: Flood selection with Euclidean color tolerance and anti-aliased edge feathering.
-  - **Boolean Mask Logic**: Union, Subtract, Intersect, Expand, and Contract.
-- **Transformations**:
-  - 2D Affine Transformation matrix (Translation, Rotation, Scaling, Skew) with high-fidelity Bilinear Interpolation.
-  - Mesh-Warp grid interpolation and Perspective vanishing-point guides with angle snapping.
-- **Symmetry Guides**:
-  - Horizontal & Vertical mirror reflection axes.
-  - **$N$-Fold Radial Symmetry** (Mandala & Kaleidoscope illustration).
+* **Selection Tools**:
+  * Rectangle and Ellipse marquee tools.
+  * **Freehand Lasso**: Polygon scanline rasterization with even-odd fill rules.
+  * **Magic Wand**: Flood selection with Euclidean color tolerance and anti-aliased edge feathering.
+  * **Boolean Mask Logic**: Union, Subtract, Intersect, Expand, and Contract.
+* **Transformations**:
+  * 2D Affine Transformation matrix (Translation, Rotation, Scaling, Skew) with high-fidelity Bilinear Interpolation.
+  * Mesh-Warp grid interpolation and Perspective vanishing-point guides with angle snapping.
+* **Symmetry Guides**:
+  * Horizontal & Vertical mirror reflection axes.
+  * **$N$-Fold Radial Symmetry** (Mandala & Kaleidoscope illustration).
 
 ---
 
 ### 6. Multi-Threaded Artistic Filters & Color Adjustments
 Accelerated via **Rayon** across all CPU cores:
-- **Gaussian Blur**: Multi-threaded separable 1D convolution with arbitrary radius ($\sigma$).
-- **Motion Blur**: Directional linear blur with configurable angle and distance.
-- **Radial / Zoom Blur**: Focus-point zoom blur for dramatic action lines.
-- **Unsharp Mask**: Edge-enhancing high-pass sharpening.
-- **Manga Halftone (Screentone)**: Rotated dot grid pattern generator for comic shading.
-- **Chromatic Aberration**: Optical lens RGB displacement.
-- **Bloom / Glow**: Luminance thresholding, Gaussian blur, and additive screen blend.
-- **Mosaic / Pixelate**: Block-based pixel color averaging.
-- **Film Grain & Noise**: Monochromatic and RGB photographic noise texture.
-- **Tone Adjustments**: Levels (Black/White/Gamma), Invert, Sepia, Hue/Saturation, Brightness/Contrast, Vignette, Gradient Map.
+* **Gaussian Blur**: Multi-threaded separable 1D convolution with arbitrary radius ($\sigma$).
+* **Motion Blur**: Directional linear blur with configurable angle and distance.
+* **Radial / Zoom Blur**: Focus-point zoom blur for dramatic action lines.
+* **Unsharp Mask**: Edge-enhancing high-pass sharpening.
+* **Manga Halftone (Screentone)**: Rotated dot grid pattern generator for comic shading.
+* **Chromatic Aberration**: Optical lens RGB displacement.
+* **Bloom / Glow**: Luminance thresholding, Gaussian blur, and additive screen blend.
+* **Mosaic / Pixelate**: Block-based pixel color averaging.
+* **Film Grain & Noise**: Monochromatic and RGB photographic noise texture.
+* **Tone Adjustments**: Levels (Black/White/Gamma), Invert, Sepia, Hue/Saturation, Brightness/Contrast, Vignette, Gradient Map.
 
 ---
 
 ### 7. File Storage & Local Gallery
-- **`.drawling` Open Container Format**:
-  - Lossless compressed ZIP archive containing:
-    - `project.json`: Complete project manifest, layer hierarchy, blend modes, and timestamps.
-    - `thumbnail.png`: High-resolution artwork preview.
-    - `layers/{layer_id}.png`: Lossless PNG buffers for each individual layer.
-- **Export Formats**: PNG (lossless 32-bit), JPEG (quality-controlled with matte background composition), and SVG (scalable vector format with embedded raster data).
-- **Local Gallery Database (SQLite)**:
-  - Local database (`projects.db`) indexing project titles, file paths, thumbnails, tags, and editing duration.
-  - Auto-save journaling for crash recovery.
+* **`.drawling` Open Container Format**:
+  * Lossless compressed ZIP archive containing:
+    * `project.json`: Complete project manifest, layer hierarchy, blend modes, and timestamps.
+    * `thumbnail.png`: High-resolution artwork preview.
+    * `layers/{layer_id}.png`: Lossless PNG buffers for each individual layer.
+* **Export Formats**: PNG (lossless 32-bit), JPEG (quality-controlled with matte background composition), and SVG (scalable vector format with embedded raster data).
+* **Local Gallery Database (SQLite)**:
+  * Local database (`projects.db`) indexing project titles, file paths, thumbnails, tags, and editing duration.
+  * Auto-save journaling for crash recovery.
 
 ---
 
 ### 8. UI / UX Design & Theme Integration
-- **Modern Themes**:
-  - **KDE Plasma Breeze Dark**: Native `#232629` dark surface with `#3daee9` Plasma accent.
-  - **Windows 11 Dark**: Fluent slate dark theme with `#60cdff` accent.
-- **Zen Mode**: Press `Tab` or `F11` to hide all UI panels for distraction-free painting.
-- **Sub-Pixel Pan, Zoom & Rotation Viewport**: Smooth zooming (5% to 5000%) with anchored coordinate transforms.
+* **Modern Themes**:
+  * **KDE Plasma Breeze Dark**: Native `#232629` dark surface with `#3daee9` Plasma accent.
+  * **Windows 11 Dark**: Fluent slate dark theme with `#60cdff` accent.
+* **Zen Mode**: Press `Tab` or `F11` to hide all UI panels for distraction-free painting.
+* **Sub-Pixel Pan, Zoom & Rotation Viewport**: Smooth zooming (5% to 5000%) with anchored coordinate transforms.
 
 ---
 
-## ⌨️ Keyboard Shortcuts Reference
+## Keyboard Shortcuts Reference
 
 | Shortcut | Action | Description |
 |:---|:---|:---|
@@ -229,11 +293,11 @@ Accelerated via **Rayon** across all CPU cores:
 
 ---
 
-## 🚀 Building and Running
+## Building and Running
 
 ### Prerequisites
-- [Rust](https://www.rust-lang.org/) (2021 Edition, MSRV 1.75+)
-- Modern GPU supporting Vulkan, DirectX 12, or Metal (for `wgpu`)
+* [Rust](https://www.rust-lang.org/) (2021 Edition, MSRV 1.75+)
+* Modern GPU supporting Vulkan, DirectX 12, or Metal (for `wgpu`)
 
 ### Run All Unit & Integration Tests
 ```bash
@@ -252,9 +316,9 @@ cargo run --release -p drawling-app
 
 ---
 
-## 📄 License
+## License
 Licensed under either of:
-- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
-- **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
+* **MIT License** ([LICENSE-MIT](LICENSE-MIT))
+* **Apache License, Version 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
 
 at your option.
